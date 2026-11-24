@@ -190,7 +190,15 @@ def main():
             # Mobile layout and keyboard access: check main navigation is still reachable.
             page.set_viewport_size({'width': 390, 'height': 844})
             expect(page.get_by_role('navigation', name='Workspace navigation')).to_be_visible()
-            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), 'Unexpected horizontal page overflow'
+            overflow = page.evaluate("""() => ({
+                viewport: innerWidth,
+                document: document.documentElement.scrollWidth,
+                elements: [...document.querySelectorAll('body *')].filter(e =>
+                    e.getBoundingClientRect().right > innerWidth + 1 &&
+                    !e.closest('nav, .table-wrap, .kanban, .dependency-graph')
+                ).slice(0, 12).map(e => ({tag: e.tagName, className: String(e.className), right: e.getBoundingClientRect().right}))
+            })""")
+            assert overflow['document'] <= overflow['viewport'], f'Unexpected horizontal page overflow: {overflow}'
             page.keyboard.press('Control+k')
             expect(palette.get_by_role('textbox')).to_be_focused()
             page.keyboard.press('Escape')
