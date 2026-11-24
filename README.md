@@ -64,3 +64,13 @@ Always verify a checkpoint succeeds before further external writes. These databa
 - **Export:** user-triggered local JSON for one project. It contains private data and only currently loaded activity (latest 100 across the workspace); it is not a complete database backup.
 
 Run `npm test` to execute both domain and operations suites. See `AGENTS.md` for the agent operating protocol. These changes use the existing database schema; no deployment or database changes are required for code review.
+
+## Planning and workspace preferences
+
+- New task templates for feature, bug fix, refactoring and release preparation. Templates populate a draft; they never execute an operation.
+- Epics: descendant completion and blocked counts. Cancelled tasks and epic containers do not count; nested tasks count once per epic.
+- Health: open, ready, waiting, blocked, expired sessions, pending approvals and missing next step, computed from the loaded data.
+- Saved task views are per account, browser-local, maximum 30. They store filters, scope and layout, not credentials. They are not synced across devices.
+- Activity filters use the latest 100 loaded workspace events; no extra network calls or background polling.
+- Shortcuts: Ctrl/Cmd+K search, Alt+Shift+N new task, Alt+Shift+R refresh, Alt+Shift+T tasks.
+- Task constraint calculations use a shared indexed map instead of scanning all tasks repeatedly. No new runtime dependency or migration.
