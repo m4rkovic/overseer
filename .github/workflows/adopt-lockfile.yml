@@ -1,0 +1,38 @@
+name: Adopt verified lockfile (one-time)
+on:
+  push:
+    branches: [feature/workspace-polish]
+    paths: ['.github/workflows/adopt-lockfile.yml']
+permissions:
+  contents: read
+jobs:
+  adopt:
+    if: github.repository == 'm4rkovic/overseer' && github.ref == 'refs/heads/feature/workspace-polish'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-lockfile
+          run-id: '45373826054'
+          github-token: ${{ github.token }}
+          path: lock-artifact
+      - name: Validate and commit only the exact previously verified lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'b86c460d3252d3b7676c86bcdbdf7d615a345733e663c71728736ae3248dc2ff  lock-artifact/package-lock.json' | sha256sum -c -
+          node --input-type=module -e 'import fs from "node:fs"; import assert from "node:assert/strict"; const p=JSON.parse(fs.readFileSync("package.json")); const l=JSON.parse(fs.readFileSync("lock-artifact/package-lock.json")); assert.equal(l.lockfileVersion,3); assert.equal(l.name,p.name); assert.equal(l.version,p.version); assert.deepEqual(l.packages[""].dependencies,p.dependencies); assert.deepEqual(l.packages[""].devDependencies,p.devDependencies);'
+          if test -f package-lock.json; then
+            cmp package-lock.json lock-artifact/package-lock.json
+            exit 0
+          fi
+          cp lock-artifact/package-lock.json package-lock.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- package-lock.json
+          git commit -m 'Pin exact dependency lockfile from verified CI build'
+          git push origin HEAD:refs/heads/feature/workspace-polish
