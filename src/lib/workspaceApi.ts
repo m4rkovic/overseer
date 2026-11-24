@@ -39,9 +39,7 @@ export async function saveTaskRow(task:Task|TaskDraft){
  return {error:result.error||(!result.data?new Error('Task changed in another session. Refresh and reopen the task.'):null)};
 }
 export async function moveTask(task:Task,status:string){
- if(!task.updated_at)return {error:new Error('Refresh before moving this task.')};
- const result=await db.from('tasks').update({status}).eq('id',task.id).eq('updated_at',task.updated_at).select('id').maybeSingle();
- return {error:result.error||(!result.data?new Error('Task changed in another session. Refresh and try again.'):null)};
+ return updateTaskFields(task,{status});
 }
 
 type EditableTable='projects'|'project_memory'|'decisions';
@@ -60,4 +58,16 @@ export async function updateTaskFields(task:Task,patch:{status?:string;priority?
  if(!Object.keys(payload).length)return {error:new Error('No changes requested')};
  const result=await db.from('tasks').update(payload).eq('id',task.id).eq('updated_at',task.updated_at).select('id').maybeSingle();
  return {error:result.error||(!result.data?new Error('Task changed in another session. Refresh and try again.'):null)};
+}
+
+export async function resolveApproval(approvalId:string,status:'approved'|'rejected'){
+ const result=await db.from('approvals').update({status}).eq('id',approvalId).eq('status','pending').select('id').maybeSingle();
+ return {error:result.error||(!result.data?new Error('Approval is no longer pending. Refresh the workspace.'):null)};
+}
+export async function addDependency(dependency:Dependency){
+ return db.from('dependencies').insert(dependency);
+}
+export async function removeDependency(dependency:Dependency){
+ const result=await db.from('dependencies').delete().eq('project_id',dependency.project_id).eq('task_id',dependency.task_id).eq('depends_on_id',dependency.depends_on_id).select('task_id').maybeSingle();
+ return {error:result.error||(!result.data?new Error('Dependency is no longer present. Refresh the workspace.'):null)};
 }
