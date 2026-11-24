@@ -1,6 +1,6 @@
 import {useState,useMemo} from 'react';
 import type {Dispatch,SetStateAction} from 'react';
-import {statuses,readable,defaultFilters,filterTasks} from '../domain';
+import {statuses,readable,defaultFilters,filterTasks,groupTasksByStatus,isManualTaskStatus} from '../domain';
 import type {Task,TaskFilters,Project,Work} from '../domain';
 import type {BulkPatch} from '../operations';
 import type {ViewMode} from '../planning';
@@ -40,18 +40,10 @@ type BoardProps=TaskDisplayProps&{
 
 function TaskBoard({rows,projectName,blockers,openDetail,disabled,activeTaskIds,changeStatus}:BoardProps){
   const [dragged,setDragged]=useState<string|null>(null);
-  const lanes=useMemo(()=>{
-    const result=new Map<string,Task[]>();
-    for(const task of rows){
-      const lane=result.get(task.status)||[];
-      lane.push(task);
-      result.set(task.status,lane);
-    }
-    return result;
-  },[rows]);
+  const lanes=useMemo(()=>groupTasksByStatus(rows),[rows]);
   return <div className="kanban">{statuses.map(status=>{
     const lane=lanes.get(status)||[];
-    const acceptsDrop=!disabled&&!!dragged&&status!=='in_progress'&&!activeTaskIds.has(dragged);
+    const acceptsDrop=!disabled&&!!dragged&&isManualTaskStatus(status)&&!activeTaskIds.has(dragged);
     return <div className={'lane'+(acceptsDrop?' drop-target':'')} key={status}
       onDragOver={e=>{if(acceptsDrop)e.preventDefault()}}
       onDrop={e=>{e.preventDefault();if(acceptsDrop&&dragged)void changeStatus(dragged,status);setDragged(null)}}>
