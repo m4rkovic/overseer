@@ -41,3 +41,11 @@ jobs:
         env:
           TEST_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: python3 supabase/tests/concurrent_claim.py
+      - name: Validate review-only hardening proposal
+        env:
+          TEST_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec -i "$TEST_POSTGRES_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d overseer_test < supabase/proposals/workflow_write_hardening.sql
+          docker exec -i "$TEST_POSTGRES_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d overseer_test < supabase/tests/workflow_write_hardening.sql
