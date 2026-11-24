@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {blankTask,taskPayload,filterTasks,defaultFilters,taskBlockers,wouldCreateCycle,wouldCreateParentCycle,githubRepo,githubPR,githubBranch} from '../src/domain.ts';
+import {blankTask,taskPayload,filterTasks,defaultFilters,taskBlockers,wouldCreateCycle,wouldCreateParentCycle,githubRepo,githubPR,githubBranch,taskDraftEqual,taskChanges,dependencyCandidates} from '../src/domain.ts';
 import type {Task,Dependency,Approval,Work} from '../src/domain.ts';
 const task=(id:string,extra:Partial<Task>={}):Task=>({...blankTask('p1'),id,title:id,created_at:'2026-11-24T00:00:00Z',updated_at:'2026-11-24T00:00:00Z',...extra});
 const edge=(task_id:string,depends_on_id:string):Dependency=>({project_id:'p1',task_id,depends_on_id});
@@ -50,4 +50,22 @@ test('external links reject credentials, nonstandard ports and dot-segment repos
  assert.equal(githubPR('https://github.com/owner/repo/pull/1?token=discard#fragment'),'https://github.com/owner/repo/pull/1');
  assert.equal(githubBranch('owner/repo','feature/test'),'https://github.com/owner/repo/tree/feature%2Ftest');
  assert.equal(githubBranch('owner/repo','..'),null);
+});
+
+test('task diff writes only changed editable values and never ownership or revision',()=>{
+ const before=task('a',{title:'Example',description:'Keep',priority:2});
+ const after={...before,title:'  Changed  ',priority:0,project_id:'other',updated_at:'new'};
+ assert.deepEqual(taskChanges(before,after),{title:'Changed',priority:0});
+ assert.equal(taskDraftEqual(before,{...before,title:' Example ',updated_at:'new'}),true);
+ assert.equal(taskDraftEqual(before,after),false);
+ assert.deepEqual(taskChanges(before,{...before,title:' Example '}),{});
+});
+test('dependency candidates exclude direct prerequisites and all transitive dependents',()=>{
+ const rows=[task('A'),task('B'),task('C'),task('D'),task('E'),task('F'),task('X',{project_id:'p2'})];
+ const deps=[edge('A','B'),edge('C','A'),edge('D','C'),{project_id:'p2',task_id:'E',depends_on_id:'A'}];
+ assert.deepEqual(dependencyCandidates(rows[0],rows,deps).map(t=>t.id),['E','F']);
+});
+test('dependency candidate traversal terminates even on malformed cyclic graph',()=>{
+ const rows=[task('A'),task('B'),task('C')];
+ assert.deepEqual(dependencyCandidates(rows[0],rows,[edge('A','B'),edge('B','A')]).map(t=>t.id),['C']);
 });
