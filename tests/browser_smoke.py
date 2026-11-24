@@ -197,6 +197,25 @@ def main():
             expect(page.get_by_role('button', name='Refresh', exact=True)).to_be_enabled()
             assert mock.fail_task_reads == 0
             assert not page.get_by_role('alert').count(), 'Read retry left a visible error'
+            # Failed refresh must preserve the last snapshot but prevent new writes.
+            mock.fail_task_reads = 2
+            page.get_by_role('button', name='Refresh', exact=True).click()
+            expect(page.get_by_role('button', name='Refresh', exact=True)).to_be_enabled()
+            expect(page.get_by_role('alert')).to_be_visible()
+            page.get_by_role('button', name='Tasks', exact=True).click()
+            page.locator('.task-card').filter(has_text='Concurrent edit').click()
+            page.get_by_role('button', name='Edit', exact=True).click()
+            dialog.get_by_label('Title', exact=True).fill('Must not be written')
+            before = len(mock.writes)
+            dialog.get_by_role('button', name='Save task').click()
+            expect(dialog.get_by_role('alert')).to_contain_text('Workspace data is stale')
+            assert len(mock.writes) == before
+            page.once('dialog', lambda confirmation: confirmation.accept())
+            dialog.get_by_role('button', name='Close', exact=True).click()
+            page.get_by_role('button', name='Refresh', exact=True).click()
+            expect(page.get_by_role('button', name='Refresh', exact=True)).to_be_enabled()
+            assert not page.get_by_role('alert').count()
+            page.get_by_role('button', name='Settings', exact=True).click()
             # Mobile layout and keyboard access: check main navigation is still reachable.
             page.set_viewport_size({'width': 390, 'height': 844})
             expect(page.get_by_role('navigation', name='Workspace navigation')).to_be_visible()
