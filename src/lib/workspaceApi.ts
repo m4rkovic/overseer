@@ -51,3 +51,13 @@ export async function saveRecord(table:EditableTable,id:string|undefined,updated
  const result=await db.from(table).update(payload).eq('id',id).eq('updated_at',updatedAt).select('id').maybeSingle();
  return {error:result.error||(!result.data?new Error('Record changed in another session. Refresh and reopen it.'):null)};
 }
+
+export async function updateTaskFields(task:Task,patch:{status?:string;priority?:number}){
+ if(!task.updated_at)return {error:new Error('Refresh before updating this task.')};
+ if(patch.status!==undefined&&!['backlog','ready','blocked','review','done','cancelled'].includes(patch.status))return {error:new Error('Invalid manual status')};
+ if(patch.priority!==undefined&&(!Number.isInteger(patch.priority)||patch.priority<0||patch.priority>4))return {error:new Error('Invalid priority')};
+ const payload={...(patch.status!==undefined?{status:patch.status}:{}),...(patch.priority!==undefined?{priority:patch.priority}:{})};
+ if(!Object.keys(payload).length)return {error:new Error('No changes requested')};
+ const result=await db.from('tasks').update(payload).eq('id',task.id).eq('updated_at',task.updated_at).select('id').maybeSingle();
+ return {error:result.error||(!result.data?new Error('Task changed in another session. Refresh and try again.'):null)};
+}
