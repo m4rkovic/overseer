@@ -1,6 +1,6 @@
 import {db} from './supabase';
 import type {Task,TaskDraft,Project,Note,Decision,Work,Approval,Activity,Dependency} from '../domain';
-import {taskPayload} from '../domain';
+import {taskPayload,isManualTaskStatus} from '../domain';
 
 const PAGE_SIZE=500;
 async function readRows<T>(table:string,order:string,ascending=true,secondary='id',tertiary?:string):Promise<T[]> {
@@ -52,7 +52,7 @@ export async function saveRecord(table:EditableTable,id:string|undefined,updated
 
 export async function updateTaskFields(task:Task,patch:{status?:string;priority?:number}){
  if(!task.updated_at)return {error:new Error('Refresh before updating this task.')};
- if(patch.status!==undefined&&!['backlog','ready','blocked','review','done','cancelled'].includes(patch.status))return {error:new Error('Invalid manual status')};
+ if(patch.status!==undefined&&!isManualTaskStatus(patch.status))return {error:new Error('Invalid manual status')};
  if(patch.priority!==undefined&&(!Number.isInteger(patch.priority)||patch.priority<0||patch.priority>4))return {error:new Error('Invalid priority')};
  const payload={...(patch.status!==undefined?{status:patch.status}:{}),...(patch.priority!==undefined?{priority:patch.priority}:{})};
  if(!Object.keys(payload).length)return {error:new Error('No changes requested')};
