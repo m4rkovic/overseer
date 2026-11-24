@@ -1,0 +1,28 @@
+import {useEffect,useRef} from 'react';
+import type {FormEvent} from 'react';
+import {db} from '../lib/supabase';
+import {statuses,readable,githubPR,wouldCreateCycle,wouldCreateParentCycle} from '../domain';
+import type {Task,TaskDraft,Project,Dependency} from '../domain';
+import {Field} from './primitives';
+type Props={editor:Task|TaskDraft;projects:Project[];tasks:Task[];deps:Dependency[];busy:boolean;editorLocked:boolean;error:string;setEditor:(value:Task|TaskDraft|null)=>void;saveTask:(event:FormEvent)=>void|Promise<void>;mutate:(fn:()=>PromiseLike<{error:unknown}>)=>Promise<boolean>};
+export function TaskEditor({editor,projects,tasks,deps,busy,editorLocked,error,setEditor,saveTask,mutate}:Props){
+ const panelRef=useRef<HTMLElement|null>(null);
+ const state=useRef({busy,setEditor});state.current={busy,setEditor};
+ useEffect(()=>{
+  const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;
+  const panel=panelRef.current;if(!panel)return;
+  const focusable=()=>Array.from(panel.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href]')).filter(el=>!el.closest('fieldset:disabled')&&el.getClientRects().length>0);
+  (panel.querySelector<HTMLElement>('input:not(:disabled)')||focusable()[0])?.focus();
+  const handle=(e:KeyboardEvent)=>{
+   if(e.key==='Escape'&&!state.current.busy){e.preventDefault();state.current.setEditor(null);return;}
+   if(e.key!=='Tab')return;
+   const items=focusable();if(!items.length){e.preventDefault();return;}
+   const first=items[0],last=items[items.length-1];
+   if(e.shiftKey&&(document.activeElement===first||!panel.contains(document.activeElement))){e.preventDefault();last.focus();}
+   else if(!e.shiftKey&&(document.activeElement===last||!panel.contains(document.activeElement))){e.preventDefault();first.focus();}
+  };
+  panel.addEventListener('keydown',handle);
+  return()=>{panel.removeEventListener('keydown',handle);previous?.focus();};
+ },[]);
+ return <div className="overlay"><section ref={panelRef} role="dialog" aria-modal="true" aria-label="Task editor" className="drawer"><div className="section-head"><h2>{'id' in editor?'Edit task':'New task'}</h2><button disabled={busy} onClick={()=>setEditor(null)}>Close</button></div>{error&&<p role="alert" className="error">{error}</p>}{editorLocked&&<p className="notice">This task has an active work session. Editing is disabled until it is finished or recovered.</p>}<form onSubmit={saveTask}><fieldset disabled={editorLocked||busy} className="editor-fields"><Field label="Project"><select disabled={'id' in editor} value={editor.project_id} onChange={e=>setEditor({...editor,project_id:e.target.value,parent_id:null})}>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></Field><Field label="Title"><input required maxLength={240} value={editor.title} onChange={e=>setEditor({...editor,title:e.target.value})}/></Field><div className="form-grid"><Field label="Type"><select value={editor.kind} onChange={e=>setEditor({...editor,kind:e.target.value})}>{['epic','task','subtask'].map(k=><option key={k}>{k}</option>)}</select></Field><Field label="Priority"><select value={editor.priority} onChange={e=>setEditor({...editor,priority:Number(e.target.value)})}>{[0,1,2,3,4].map(p=><option key={p} value={p}>P{p}</option>)}</select></Field><Field label="Status"><select value={editor.status} onChange={e=>setEditor({...editor,status:e.target.value})}>{statuses.filter(s=>s!=='in_progress'||editor.status==='in_progress').map(s=><option key={s} value={s}>{readable(s)}</option>)}</select></Field></div><Field label="Parent"><select value={editor.parent_id||''} onChange={e=>setEditor({...editor,parent_id:e.target.value||null})}><option value="">None</option>{tasks.filter(t=>t.project_id===editor.project_id&&(!('id' in editor)||t.id!==editor.id&&!wouldCreateParentCycle(editor.id,t.id,tasks))).map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select></Field>{(['description','acceptance_criteria','next_step','branch','pr_url','test_result'] as const).map(k=><Field label={readable(k)} key={k}><textarea rows={k==='description'||k==='acceptance_criteria'?3:2} value={editor[k]} onChange={e=>setEditor({...editor,[k]:e.target.value})}/></Field>)}<label className="checkbox"><input type="checkbox" checked={editor.requires_approval} onChange={e=>setEditor({...editor,requires_approval:e.target.checked})}/> Requires approval</label>{'id' in editor&&<div><h3>Dependencies</h3>{deps.filter(d=>d.task_id===editor.id).map(d=><p key={d.depends_on_id}>{tasks.find(t=>t.id===d.depends_on_id)?.title||'Task'} <button type="button" disabled={busy} onClick={()=>void mutate(()=>db.from('dependencies').delete().eq('task_id',d.task_id).eq('depends_on_id',d.depends_on_id))}>Remove</button></p>)}<Field label="Add prerequisite"><select value="" disabled={busy} onChange={e=>{const id=e.target.value;if(id&&!wouldCreateCycle(editor.id,id,deps))void mutate(()=>db.from('dependencies').insert({project_id:editor.project_id,task_id:editor.id,depends_on_id:id}))}}><option value="">Select task</option>{tasks.filter(t=>t.project_id===editor.project_id&&t.id!==editor.id&&!deps.some(d=>d.task_id===editor.id&&d.depends_on_id===t.id)&&!wouldCreateCycle(editor.id,t.id,deps)).map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select></Field></div>}{githubPR(editor.pr_url)&&<a href={githubPR(editor.pr_url)!} target="_blank" rel="noreferrer">Open pull request ↗</a>}<button className="primary" disabled={busy||editorLocked||!editor.title.trim()}>Save task</button></fieldset></form></section></div>;
+}
