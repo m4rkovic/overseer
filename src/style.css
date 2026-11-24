@@ -114,6 +114,7 @@ small,.muted {
 }
 
 aside {
+  min-width:0;
   border-right:1px solid var(--line);
   padding:25px 14px;
   display:flex;
@@ -147,6 +148,8 @@ aside {
 }
 
 nav {
+  min-width:0;
+  max-width:100%;
   display:grid;
   gap:3px;
   overflow-y:auto;
@@ -287,6 +290,8 @@ section {
 
 .project-line>:first-child {
   flex:1;
+  min-width:0;
+  overflow-wrap:anywhere;
 }
 
 .project-line progress {
@@ -296,6 +301,8 @@ section {
 }
 
 .table-wrap {
+  min-width:0;
+  max-width:100%;
   overflow:auto;
   border:1px solid var(--line);
   border-radius:5px;
@@ -376,6 +383,8 @@ tr:last-child td {
 }
 
 .kanban {
+  min-width:0;
+  max-width:100%;
   display:flex;
   gap:10px;
   overflow-x:auto;
@@ -511,7 +520,7 @@ tr:last-child td {
 
 @media(max-width:850px) {
   .shell {
-    grid-template-columns:1fr;
+    grid-template-columns:minmax(0,1fr);
   }
   aside {
     position:static;
@@ -532,6 +541,7 @@ tr:last-child td {
     overflow-y:hidden;
   }
   nav button {
+    flex:0 0 auto;
     white-space:nowrap;
   }
   .aside-footer {
@@ -541,6 +551,7 @@ tr:last-child td {
     gap:10px;
   }
   .aside-footer .email {
+    min-width:0;
     margin:0;
     flex:1;
   }
@@ -702,6 +713,8 @@ kbd {
 }
 
 .dependency-graph {
+  min-width:0;
+  max-width:100%;
   display:flex;
   gap:14px;
   overflow:auto;
