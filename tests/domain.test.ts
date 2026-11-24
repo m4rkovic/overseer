@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {blankTask,taskPayload,filterTasks,defaultFilters,taskBlockers,wouldCreateCycle,wouldCreateParentCycle,githubRepo,githubPR} from '../src/domain.ts';
+import {blankTask,taskPayload,filterTasks,defaultFilters,taskBlockers,wouldCreateCycle,wouldCreateParentCycle,githubRepo,githubPR,githubBranch} from '../src/domain.ts';
 import type {Task,Dependency,Approval,Work} from '../src/domain.ts';
 const task=(id:string,extra:Partial<Task>={}):Task=>({...blankTask('p1'),id,title:id,created_at:'2026-11-24T00:00:00Z',updated_at:'2026-11-24T00:00:00Z',...extra});
 const edge=(task_id:string,depends_on_id:string):Dependency=>({project_id:'p1',task_id,depends_on_id});
@@ -42,4 +42,12 @@ test('GitHub link validation permits only expected repository and PR URLs',()=>{
  assert.equal(githubPR('https://github.com/owner/repo/pull/1'),'https://github.com/owner/repo/pull/1');
  assert.equal(githubPR('javascript:alert(1)'),null);assert.equal(githubPR('https://github.com.evil.invalid/owner/repo/pull/1'),null);
  assert.equal(githubPR('https://github.com/owner/repo/issues/1'),null);
+});
+
+test('external links reject credentials, nonstandard ports and dot-segment repositories',()=>{
+ for(const value of ['owner/.','owner/..','../repo','owner/repo?x=1','owner/repo#x'])assert.equal(githubRepo(value),null);
+ for(const value of ['https://user@github.com/owner/repo/pull/1','https://github.com:444/owner/repo/pull/1','https://github.com/owner/repo/pull/0','https://github.com/owner/repo/pull/999999999999999999999'])assert.equal(githubPR(value),null);
+ assert.equal(githubPR('https://github.com/owner/repo/pull/1?token=discard#fragment'),'https://github.com/owner/repo/pull/1');
+ assert.equal(githubBranch('owner/repo','feature/test'),'https://github.com/owner/repo/tree/feature%2Ftest');
+ assert.equal(githubBranch('owner/repo','..'),null);
 });
