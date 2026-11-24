@@ -20,7 +20,7 @@ export function dependencyLayers(tasks:readonly Task[],dependencies:readonly Dep
  const relevant=dependencies.filter(d=>byId.get(d.task_id)?.project_id===d.project_id&&byId.get(d.depends_on_id)?.project_id===d.project_id);
  const incoming=new Map(tasks.map(t=>[t.id,0]));
  const outgoing=new Map<string,string[]>();
- for(const d of relevant){incoming.set(d.task_id,(incoming.get(d.task_id)||0)+1);outgoing.set(d.depends_on_id,[...(outgoing.get(d.depends_on_id)||[]),d.task_id]);}
+ for(const d of relevant){incoming.set(d.task_id,(incoming.get(d.task_id)||0)+1);const edges=outgoing.get(d.depends_on_id)||[];edges.push(d.task_id);outgoing.set(d.depends_on_id,edges);}
  const levels=new Map<string,number>(),pending=tasks.filter(t=>incoming.get(t.id)===0).map(t=>t.id);
  for(let i=0;i<pending.length;i++){
   const id=pending[i],level=levels.get(id)||0;levels.set(id,level);
