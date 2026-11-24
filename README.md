@@ -45,3 +45,11 @@ Enable GitHub Pages under Settings → Pages → Build and deployment → GitHub
 - `recover_expired_sessions(project_id)`: marks expired sessions interrupted and in-progress tasks blocked. No scheduled polling or auto-retry.
 
 Always verify a checkpoint succeeds before further external writes. These database leases coordinate cooperative sessions; they cannot fence external GitHub operations already in flight.
+
+## Workspace polish
+
+- Task list and Kanban support project, status, priority, type and text filters, with deterministic sorting and manual drag-and-drop. Active work sessions are read-only in the task editor; starting agent work requires an actual claim.
+- Project registry, project memory, directives (constraint/convention records), architecture decisions and dependency overview share the existing schema. No additional database migration is required for these views.
+- Task and record writes use explicit editable fields and an updated_at comparison to reject stale edits. Database RLS and constraints remain authoritative; UI locks are advisory, not authorization.
+- Paginated workspace reads occur on sign-in, explicit refresh and successful mutations. Activity remains limited to the most recent 100 events. No background polling.
+- Run `npm test` using Node 22 for dependency-free domain tests. Full frontend build and end-to-end browser verification are separate release gates.
