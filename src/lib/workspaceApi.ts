@@ -4,16 +4,25 @@ import {taskPayload,isManualTaskStatus,taskChanges,validateRecordPayload,singleM
 
 import {readWithRetry,readPages} from './readPolicy';
 
-const taskColumns='id,project_id,parent_id,kind,title,description,acceptance_criteria,next_step,branch,pr_url,test_result,status,priority,requires_approval,updated_at,created_at';
-async function readRows<T>(table:string,columns:string,signal:AbortSignal,order:string,ascending=true,secondary='id',tertiary?:string):Promise<T[]>{
- return readPages<T>(async(offset,size)=>{
+// Browser projections, not generated full database schema types.
+type ReadRowsByTable={
+ projects:Project;tasks:Task;execution_queue:Task;project_memory:Note;
+ decisions:Decision;work_sessions:Work;approvals:Approval;dependencies:Dependency;
+};
+type ReadTable=keyof ReadRowsByTable;
+type RowField<T extends ReadTable>=Extract<keyof ReadRowsByTable[T],string>;
+type OrderField<T extends ReadTable>=RowField<T>|(T extends 'decisions'|'approvals'?'created_at':never);
+const taskColumns=['id','project_id','parent_id','kind','title','description','acceptance_criteria','next_step','branch','pr_url','test_result','status','priority','requires_approval','updated_at','created_at'] as const satisfies readonly RowField<'tasks'>[];
+async function readRows<T extends ReadTable>(table:T,columns:readonly RowField<T>[],signal:AbortSignal,order:OrderField<T>,ascending=true,secondary:OrderField<T>,tertiary?:OrderField<T>):Promise<ReadRowsByTable[T][]>{
+ return readPages<ReadRowsByTable[T]>(async(offset,size)=>{
   const data=await readWithRetry(async()=>{
-   let query=db.from(table).select(columns).order(order,{ascending});
+   let query=db.from(table).select(columns.join(',')).order(order,{ascending});
    if(order!==secondary)query=query.order(secondary);
    if(tertiary&&tertiary!==order&&tertiary!==secondary)query=query.order(tertiary);
    return await query.range(offset,offset+size-1).abortSignal(signal);
   },signal);
-  return (data??[]) as unknown as T[];
+  // Runtime schema is verified by isolated SQL and hosted REST integration gates.
+  return (data??[]) as unknown as ReadRowsByTable[T][];
  },signal);
 }
 async function recentActivity(signal:AbortSignal):Promise<Activity[]>{
@@ -22,15 +31,15 @@ async function recentActivity(signal:AbortSignal):Promise<Activity[]>{
 }
 export async function loadWorkspace(signal:AbortSignal){
  const [projects,tasks,queue,notes,decisions,works,approvals,activity,deps]=await Promise.all([
-  readRows<Project>('projects','id,name,description,repository,status,updated_at',signal,'name'),
-  readRows<Task>('tasks',taskColumns,signal,'priority',true,'created_at','id'),
-  readRows<Task>('execution_queue',taskColumns,signal,'priority',true,'created_at','id'),
-  readRows<Note>('project_memory','id,project_id,title,content,category,updated_at',signal,'updated_at',false),
-  readRows<Decision>('decisions','id,project_id,title,rationale,outcome,status,updated_at',signal,'created_at',false),
-  readRows<Work>('work_sessions','id,project_id,task_id,summary,next_step,status,started_at,heartbeat_at,lease_expires_at',signal,'started_at',false),
-  readRows<Approval>('approvals','id,project_id,task_id,operation,status,updated_at',signal,'created_at',false),
+  readRows('projects',['id','name','description','repository','status','updated_at'],signal,'name',true,'id'),
+  readRows('tasks',taskColumns,signal,'priority',true,'created_at','id'),
+  readRows('execution_queue',taskColumns,signal,'priority',true,'created_at','id'),
+  readRows('project_memory',['id','project_id','title','content','category','updated_at'],signal,'updated_at',false,'id'),
+  readRows('decisions',['id','project_id','title','rationale','outcome','status','updated_at'],signal,'created_at',false,'id'),
+  readRows('work_sessions',['id','project_id','task_id','summary','next_step','status','started_at','heartbeat_at','lease_expires_at'],signal,'started_at',false,'id'),
+  readRows('approvals',['id','project_id','task_id','operation','status','updated_at'],signal,'created_at',false,'id'),
   recentActivity(signal),
-  readRows<Dependency>('dependencies','project_id,task_id,depends_on_id',signal,'task_id',true,'depends_on_id')
+  readRows('dependencies',['project_id','task_id','depends_on_id'],signal,'task_id',true,'depends_on_id')
  ]);
  return {projects,tasks,queue,notes,decisions,works,approvals,activity,deps};
 }
