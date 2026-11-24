@@ -1,3 +1,4 @@
+import {useMemo} from 'react';
 import type {FormEvent} from 'react';
 import {Field,Empty} from './primitives';
 import {readable,githubRepo} from '../domain';
@@ -52,7 +53,8 @@ export function ProjectRegistry({projects,tasks,onEdit,onOpen}:{projects:Project
 }
 
 export function DependencyOverview({tasks,dependencies,projectName,onOpen}:{tasks:Task[];dependencies:Dependency[];projectName:(id:string)=>string;onOpen:(t:Task)=>void}){
- const byId=new Map(tasks.map(t=>[t.id,t]));
- const groups=tasks.filter(t=>dependencies.some(d=>d.task_id===t.id));
- return groups.length?<div className="dependency-list">{groups.map(t=><article className="record" key={t.id}><div className="section-head"><button className="text-button" onClick={()=>onOpen(t)}>{t.title}</button><small>{projectName(t.project_id)}</small></div><p className="muted">Depends on</p>{dependencies.filter(d=>d.task_id===t.id).map(d=>{const prereq=byId.get(d.depends_on_id);return <div className="dependency-edge" key={d.depends_on_id}><span aria-hidden="true">↳</span>{prereq?<button className="text-button" onClick={()=>onOpen(prereq)}>{prereq.title}</button>:<span>Unknown prerequisite</span>}<span className={'status '+(prereq?.status||'blocked')}>{readable(prereq?.status||'unknown')}</span></div>})}</article>)}</div>:<Empty>No task dependencies in this view.</Empty>;
+ const byId=useMemo(()=>new Map(tasks.map(t=>[t.id,t])),[tasks]);
+ const byTask=useMemo(()=>{const groups=new Map<string,Dependency[]>();for(const d of dependencies){const rows=groups.get(d.task_id)||[];rows.push(d);groups.set(d.task_id,rows)}return groups},[dependencies]);
+ const groups=tasks.filter(t=>byTask.has(t.id));
+ return groups.length?<div className="dependency-list">{groups.map(t=><article className="record" key={t.id}><div className="section-head"><button className="text-button" onClick={()=>onOpen(t)}>{t.title}</button><small>{projectName(t.project_id)}</small></div><p className="muted">Depends on</p>{(byTask.get(t.id)||[]).map(d=>{const prereq=byId.get(d.depends_on_id);return <div className="dependency-edge" key={d.depends_on_id}><span aria-hidden="true">↳</span>{prereq?<button className="text-button" onClick={()=>onOpen(prereq)}>{prereq.title}</button>:<span>Unknown prerequisite</span>}<span className={'status '+(prereq?.status||'blocked')}>{readable(prereq?.status||'unknown')}</span></div>})}</article>)}</div>:<Empty>No task dependencies in this view.</Empty>;
 }
