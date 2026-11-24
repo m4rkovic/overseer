@@ -447,7 +447,7 @@ tr:last-child td {
   display:grid;
   place-items:center;
   padding:20px;
-  background:radial-gradient(ellipse at 20% 90%,#1d372a 0%,transparent 50%),var(--background);
+  background:var(--background);
 }
 
 .login-panel {
