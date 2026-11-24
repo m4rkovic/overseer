@@ -130,12 +130,20 @@ def main():
             page.get_by_role('button', name='Edit', exact=True).click()
             dialog = page.get_by_role('dialog', name='Task editor')
             expect(dialog).to_be_visible()
+            expect(dialog.get_by_role('button', name='Save task')).to_be_disabled()
+            dialog.get_by_label('Title', exact=True).fill('Unsaved title')
+            expect(dialog.get_by_label('Add prerequisite')).to_be_disabled()
+            page.once('dialog', lambda confirmation: confirmation.dismiss())
+            dialog.get_by_role('button', name='Close', exact=True).click()
+            expect(dialog).to_be_visible()
+            expect(dialog.get_by_label('Title', exact=True)).to_have_value('Unsaved title')
+            assert not mock.writes
             dialog.get_by_label('Title', exact=True).fill('Updated fixture task')
             dialog.get_by_role('button', name='Save task').click()
             expect(dialog).not_to_be_visible()
             expect(page.get_by_role('heading', name='Updated fixture task', exact=True)).to_be_visible()
             assert len(mock.writes) == 1, mock.writes
-            assert not {'id', 'updated_at', 'project_id'}.intersection(mock.writes[0])
+            assert mock.writes[0] == {'title': 'Updated fixture task'}, mock.writes
             # A concurrent external edit must not be overwritten by a stale form.
             page.get_by_role('button', name='Edit', exact=True).click()
             expect(dialog).to_be_visible()
@@ -145,6 +153,7 @@ def main():
             expect(dialog.get_by_role('alert')).to_contain_text('Task changed in another session')
             assert len(mock.writes) == 2, mock.writes
             assert mock.tasks[0]['title'] == 'Concurrent edit'
+            page.once('dialog', lambda confirmation: confirmation.accept())
             dialog.get_by_role('button', name='Close', exact=True).click()
             page.get_by_role('button', name='Refresh', exact=True).click()
             expect(page.get_by_role('heading', name='Concurrent edit', exact=True)).to_be_visible()
@@ -158,6 +167,7 @@ def main():
             page.wait_for_timeout(500)
             assert len(mock.writes) == before + 1
             assert mock.tasks[0]['title'] == 'Concurrent edit'
+            page.once('dialog', lambda confirmation: confirmation.accept())
             dialog.get_by_role('button', name='Close', exact=True).click()
             # Active sessions make task editing read-only in the browser.
             mock.sessions = [{'id': USER, 'project_id': PROJECT, 'task_id': TASK, 'summary': '', 'next_step': '', 'status': 'active', 'started_at': STAMP, 'heartbeat_at': STAMP, 'lease_expires_at': '2099-01-01T00:00:00Z'}]
@@ -208,7 +218,7 @@ def main():
             assert not errors, errors
             assert not mock.unexpected, mock.unexpected
             browser.close()
-            print('PASS: login, task edit, stale-write conflict, no write retry, active-session lock, board, palette, settings, read retry, mobile, logout; all API requests isolated')
+            print('PASS: login, task edit, minimal patch, unsaved draft, stale-write conflict, no write retry, active-session lock, board, palette, settings, read retry, mobile, logout; all API requests isolated')
     finally:
         server.shutdown()
         server.server_close()
