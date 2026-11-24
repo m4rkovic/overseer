@@ -1,5 +1,5 @@
 import {useMemo,useState} from 'react';
-import {readable,githubRepo,githubPR} from '../domain';
+import {readable,githubRepo,githubPR,githubBranch} from '../domain';
 import type {Task,Project,Dependency,Work,Note,Decision,Approval,Activity} from '../domain';
 import {planBulk,dependencyLayers,projectStats,handoverText,exportProject} from '../operations';
 import type {BulkPatch,ExportData} from '../operations';
@@ -32,7 +32,7 @@ export function DependencyGraph({tasks,deps,onOpen}:{tasks:Task[];deps:Dependenc
 }
 
 export function TaskDetail({task,project,tasks,deps,works,approvals,activity,onEdit,onOpen,onClose}:{task:Task;project?:Project;tasks:Task[];deps:Dependency[];works:Work[];approvals:Approval[];activity:Activity[];onEdit:()=>void;onOpen:(t:Task)=>void;onClose:()=>void}){
- const branch=project&&githubRepo(project.repository)&&task.branch?githubRepo(project.repository)+'/tree/'+encodeURIComponent(task.branch):null;
+ const branch=project?githubBranch(project.repository,task.branch):null;
  const pr=githubPR(task.pr_url);
  const related=deps.filter(d=>d.task_id===task.id||d.depends_on_id===task.id);
  return <section><div className="section-head"><div><small>{project?.name||'Project'} / {task.kind}</small><h2>{task.title}</h2></div><div className="actions"><button onClick={onEdit}>Edit</button><button onClick={onClose}>Back</button></div></div>
