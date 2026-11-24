@@ -11,28 +11,36 @@ export function useWorkspaceData(){
  const [error,setError]=useState('');
  const [notice,setNotice]=useState('');
  const requestId=useRef(0);
+ const activeRead=useRef<AbortController|null>(null);
  const mutationLock=useRef(false);
  const mounted=useRef(false);
 
  const refresh=useCallback(async()=>{
   if(!mounted.current)return false;
   const id=++requestId.current;
+  activeRead.current?.abort();
+  const controller=new AbortController();
+  activeRead.current=controller;
+  const timeout=setTimeout(()=>controller.abort(),20000);
   setLoading(true);setError('');
   try{
-   const next=await loadWorkspace();
+   const next=await loadWorkspace(controller.signal);
    if(mounted.current&&id===requestId.current){setData(next);return true;}
    return false;
   }catch(e){
-   if(mounted.current&&id===requestId.current)setError(message(e));
+   if(mounted.current&&id===requestId.current)setError(controller.signal.aborted?'Read cancelled or timed out. Refresh to retry.':message(e));
    return false;
   }finally{
+   clearTimeout(timeout);
+   controller.abort();
+   if(activeRead.current===controller)activeRead.current=null;
    if(mounted.current&&id===requestId.current)setLoading(false);
   }
  },[]);
  useEffect(()=>{
   mounted.current=true;
   void refresh();
-  return()=>{mounted.current=false;requestId.current++};
+  return()=>{mounted.current=false;requestId.current++;activeRead.current?.abort()};
  },[refresh]);
 
  async function runMutation<T>(operation:()=>Promise<T>,complete:(result:T,loaded:boolean)=>void):Promise<boolean>{
