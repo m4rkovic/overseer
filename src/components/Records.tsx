@@ -11,28 +11,25 @@ export function RecordForm({editor,projects,scope,busy,onClose,onSave}:{editor:R
   e.preventDefault();const f=new FormData(e.currentTarget);const get=(name:string)=>String(f.get(name)??'').trim();
   let value:RecordSubmission;
   if(editor.kind==='project'){
-   if(!get('name'))return;
    value={table:'projects',id:record?.id,updatedAt:record?.updated_at,payload:{name:get('name'),description:get('description'),repository:get('repository'),status:get('status')}};
   }else if(editor.kind==='memory'){
-   if(!get('title')||!get('content'))return;
    value={table:'project_memory',id:record?.id,updatedAt:record?.updated_at,payload:{title:get('title'),content:get('content'),category:get('category'),...(!record?{project_id:get('project_id')}:{})}};
   }else{
-   if(!get('title')||!get('rationale'))return;
    value={table:'decisions',id:record?.id,updatedAt:record?.updated_at,payload:{title:get('title'),rationale:get('rationale'),outcome:get('outcome'),status:get('status'),...(!record?{project_id:get('project_id')}:{})}};
   }
   if(await onSave(value))onClose();
  }
  return <form className="inline-form" onSubmit={submit}>
-  <div className="section-head"><h3>{record?'Edit':'New'} {editor.kind==='memory'&&editor.directives?'directive':editor.kind}</h3><button type="button" onClick={onClose}>Close</button></div>
+  <div className="section-head"><h3>{record?'Edit':'New'} {editor.kind==='memory'&&editor.directives?'directive':editor.kind}</h3><button type="button" disabled={busy} onClick={onClose}>Close</button></div>
   <fieldset disabled={busy} className="editor-fields">
   {editor.kind==='project'?<>
    <Field label="Name"><input name="name" required maxLength={120} defaultValue={editor.record?.name}/></Field>
-   <Field label="Repository (owner/name)"><input name="repository" pattern="[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+" defaultValue={editor.record?.repository}/></Field>
+   <Field label="Repository (owner/name)"><input name="repository" defaultValue={editor.record?.repository}/></Field>
    <Field label="Description"><textarea name="description" defaultValue={editor.record?.description}/></Field>
    <Field label="Status"><select name="status" defaultValue={editor.record?.status||'active'}>{['active','paused','archived'].map(s=><option key={s}>{s}</option>)}</select></Field>
   </>:<>
    {!record&&<Field label="Project"><select name="project_id" required defaultValue={scope||projects[0]?.id}>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>}
-   <Field label="Title"><input name="title" required defaultValue={editor.record?.title}/></Field>
+   <Field label="Title"><input name="title" required maxLength={240} defaultValue={editor.record?.title}/></Field>
    {editor.kind==='memory'?<>
     <Field label="Category"><select name="category" defaultValue={editor.record?.category||(editor.directives?'constraint':'context')}>{(editor.directives?['constraint','convention']:['context','architecture','constraint','convention','known_issue']).map(c=><option key={c} value={c}>{readable(c)}</option>)}</select></Field>
     <Field label="Content"><textarea name="content" rows={6} required defaultValue={editor.record?.content}/></Field>
