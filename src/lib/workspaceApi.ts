@@ -40,8 +40,9 @@ export async function saveTaskRow(task:Task|TaskDraft){
  const payload=taskPayload(task);
  if(!('id' in task))return db.from('tasks').insert(payload);
  if(!task.updated_at)return {error:new Error('Refresh the workspace before editing this task.')};
- const result=await db.from('tasks').update(payload).eq('id',task.id).eq('updated_at',task.updated_at).select('id').maybeSingle();
- return {error:result.error||(!result.data?new Error('Task changed in another session. Refresh and reopen the task.'):null)};
+ const {project_id:_,...changes}=payload;
+ const result=await db.from('tasks').update(changes).eq('id',task.id).eq('updated_at',task.updated_at).select('id');
+ return {error:result.error||(result.data?.length!==1?new Error('Task changed in another session. Refresh and reopen the task.'):null)};
 }
 export async function moveTask(task:Task,status:string){
  return updateTaskFields(task,{status});
@@ -51,8 +52,8 @@ type EditableTable='projects'|'project_memory'|'decisions';
 export async function saveRecord(table:EditableTable,id:string|undefined,updatedAt:string|undefined,payload:Record<string,unknown>){
  if(!id)return db.from(table).insert(payload);
  if(!updatedAt)return {error:new Error('Refresh before editing this record.')};
- const result=await db.from(table).update(payload).eq('id',id).eq('updated_at',updatedAt).select('id').maybeSingle();
- return {error:result.error||(!result.data?new Error('Record changed in another session. Refresh and reopen it.'):null)};
+ const result=await db.from(table).update(payload).eq('id',id).eq('updated_at',updatedAt).select('id');
+ return {error:result.error||(result.data?.length!==1?new Error('Record changed in another session. Refresh and reopen it.'):null)};
 }
 
 export async function updateTaskFields(task:Task,patch:{status?:string;priority?:number}){
@@ -61,19 +62,19 @@ export async function updateTaskFields(task:Task,patch:{status?:string;priority?
  if(patch.priority!==undefined&&(!Number.isInteger(patch.priority)||patch.priority<0||patch.priority>4))return {error:new Error('Invalid priority')};
  const payload={...(patch.status!==undefined?{status:patch.status}:{}),...(patch.priority!==undefined?{priority:patch.priority}:{})};
  if(!Object.keys(payload).length)return {error:new Error('No changes requested')};
- const result=await db.from('tasks').update(payload).eq('id',task.id).eq('updated_at',task.updated_at).select('id').maybeSingle();
- return {error:result.error||(!result.data?new Error('Task changed in another session. Refresh and try again.'):null)};
+ const result=await db.from('tasks').update(payload).eq('id',task.id).eq('updated_at',task.updated_at).select('id');
+ return {error:result.error||(result.data?.length!==1?new Error('Task changed in another session. Refresh and try again.'):null)};
 }
 
 export async function resolveApproval(approval:Approval,status:'approved'|'rejected'){
  if(!approval.updated_at)return {error:new Error('Refresh before resolving this approval.')};
- const result=await db.from('approvals').update({status}).eq('id',approval.id).eq('updated_at',approval.updated_at).eq('status','pending').select('id').maybeSingle();
- return {error:result.error||(!result.data?new Error('Approval is no longer pending. Refresh the workspace.'):null)};
+ const result=await db.from('approvals').update({status}).eq('id',approval.id).eq('updated_at',approval.updated_at).eq('status','pending').select('id');
+ return {error:result.error||(result.data?.length!==1?new Error('Approval is no longer pending. Refresh the workspace.'):null)};
 }
 export async function addDependency(dependency:Dependency){
  return db.from('dependencies').insert(dependency);
 }
 export async function removeDependency(dependency:Dependency){
- const result=await db.from('dependencies').delete().eq('project_id',dependency.project_id).eq('task_id',dependency.task_id).eq('depends_on_id',dependency.depends_on_id).select('task_id').maybeSingle();
- return {error:result.error||(!result.data?new Error('Dependency is no longer present. Refresh the workspace.'):null)};
+ const result=await db.from('dependencies').delete().eq('project_id',dependency.project_id).eq('task_id',dependency.task_id).eq('depends_on_id',dependency.depends_on_id).select('task_id');
+ return {error:result.error||(result.data?.length!==1?new Error('Dependency is no longer present. Refresh the workspace.'):null)};
 }
