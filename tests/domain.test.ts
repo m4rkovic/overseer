@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {blankTask,taskPayload,filterTasks,defaultFilters,taskBlockers,wouldCreateCycle,wouldCreateParentCycle,githubRepo,githubPR,githubBranch,taskDraftEqual,taskChanges,dependencyCandidates} from '../src/domain.ts';
+import {blankTask,taskPayload,filterTasks,defaultFilters,taskBlockers,wouldCreateCycle,wouldCreateParentCycle,githubRepo,githubPR,githubBranch,taskDraftEqual,taskChanges,dependencyCandidates,validateTaskDraft,validateRecordPayload,singleMutationError} from '../src/domain.ts';
 import type {Task,Dependency,Approval,Work} from '../src/domain.ts';
 const task=(id:string,extra:Partial<Task>={}):Task=>({...blankTask('p1'),id,title:id,created_at:'2026-11-24T00:00:00Z',updated_at:'2026-11-24T00:00:00Z',...extra});
 const edge=(task_id:string,depends_on_id:string):Dependency=>({project_id:'p1',task_id,depends_on_id});
@@ -68,4 +68,34 @@ test('dependency candidates exclude direct prerequisites and all transitive depe
 test('dependency candidate traversal terminates even on malformed cyclic graph',()=>{
  const rows=[task('A'),task('B'),task('C')];
  assert.deepEqual(dependencyCandidates(rows[0],rows,[edge('A','B'),edge('B','A')]).map(t=>t.id),['C']);
+});
+
+test('task validation rejects unknown projects, invalid priority and manual agent claims',()=>{
+ const projects=[{id:'p1',name:'Project',description:'',repository:'owner/repo',status:'active'}];
+ const valid=task('a',{title:'Example'});
+ assert.equal(validateTaskDraft(valid,projects,[valid]),null);
+ for(const patch of [{project_id:'foreign'},{priority:9},{status:'in_progress'},{title:'   '},{kind:'unknown'},{pr_url:'https://example.com/pull/1'}]){
+  assert.notEqual(validateTaskDraft({...valid,...patch},projects,[valid]),null);
+ }
+});
+test('task validation rejects missing or cross-project parents and cycles',()=>{
+ const projects=[{id:'p1',name:'Project',description:'',repository:'owner/repo',status:'active'}];
+ const a=task('a'),b=task('b',{parent_id:'a'}),foreign=task('x',{project_id:'p2'});
+ for(const parent_id of ['missing','x','a','b'])assert.notEqual(validateTaskDraft({...a,parent_id},projects,[a,b,foreign]),null);
+});
+test('record validation allows only expected fields and normalized values',()=>{
+ const project={name:' Project ',description:'',repository:'owner/repo',status:'active'};
+ assert.deepEqual(validateRecordPayload('projects',project,true),{...project,name:'Project'});
+ assert.throws(()=>validateRecordPayload('projects',{...project,owner_id:'foreign'},true),/Unexpected/);
+ assert.throws(()=>validateRecordPayload('projects',{...project,repository:'owner/..'},true),/Repository/);
+ const note={title:'Title',content:'Content',category:'context',project_id:'p1'};
+ assert.deepEqual(validateRecordPayload('project_memory',note,true),note);
+ assert.throws(()=>validateRecordPayload('project_memory',note,false),/Unexpected/);
+ assert.throws(()=>validateRecordPayload('project_memory',{...note,content:'  '},true),/required/);
+});
+test('single-row mutations preserve API errors and reject unexpected row counts',()=>{
+ const error=new Error('network failure');
+ assert.equal(singleMutationError({data:[],error},'conflict'),error);
+ assert.equal(singleMutationError({data:[{id:'a'}],error:null},'conflict'),null);
+ for(const data of [null,[],[1,2],{id:'a'}])assert.match(String(singleMutationError({data,error:null},'conflict')),/conflict/);
 });
