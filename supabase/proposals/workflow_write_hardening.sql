@@ -55,11 +55,9 @@ for each row execute function overseer_private.invalidate_task_approval();
 create function overseer_private.guard_approval_resolution() returns trigger
 language plpgsql security invoker set search_path='' as $$
 begin
- if current_user='authenticated' and (old.status<>'pending' or new.status not in ('approved','rejected')) then
-  -- The internal task-scope invalidation is allowed to reset to pending.
-  if not (new.status='pending' and pg_trigger_depth()>1) then
-   raise exception 'Only pending approvals may be resolved' using errcode='42501';
-  end if;
+ -- Resetting to pending only withdraws permission; no trigger-depth bypass.
+ if current_user='authenticated' and new.status<>'pending' and old.status<>'pending' then
+  raise exception 'Only pending approvals may be resolved' using errcode='42501';
  end if;
  if new.operation is distinct from old.operation or new.task_id is distinct from old.task_id or new.project_id is distinct from old.project_id then
   new.status:='pending';
@@ -69,5 +67,40 @@ end $$;
 revoke all on function overseer_private.guard_approval_resolution() from public,anon,authenticated;
 create trigger guard_approval_resolution before update on public.approvals
 for each row execute function overseer_private.guard_approval_resolution();
+
+-- Dependency edits affect the reviewed scope too. Lock the dependent task
+-- before checking its session so claims and dependency edits cannot silently overlap.
+create function overseer_private.guard_browser_dependency() returns trigger
+language plpgsql security invoker set search_path='' as $
+declare pid uuid; tid uuid;
+begin
+ if tg_op='DELETE' then pid:=old.project_id;tid:=old.task_id;
+ else pid:=new.project_id;tid:=new.task_id; end if;
+ if current_user='authenticated' then
+  perform 1 from public.tasks where id=tid and project_id=pid for update;
+  if not found then raise exception 'Dependent task unavailable' using errcode='42501'; end if;
+  if exists(select 1 from public.work_sessions where task_id=tid and project_id=pid and status='active') then
+   raise exception 'Task has an active session' using errcode='42501';
+  end if;
+ end if;
+ if tg_op='DELETE' then return old;end if;
+ return new;
+end $;
+revoke all on function overseer_private.guard_browser_dependency() from public,anon,authenticated;
+create trigger guard_browser_dependency before insert or delete on public.dependencies
+for each row execute function overseer_private.guard_browser_dependency();
+
+create function overseer_private.invalidate_dependency_approval() returns trigger
+language plpgsql security invoker set search_path='' as $
+declare pid uuid;tid uuid;
+begin
+ if tg_op='DELETE' then pid:=old.project_id;tid:=old.task_id;
+ else pid:=new.project_id;tid:=new.task_id;end if;
+ update public.approvals set status='pending' where project_id=pid and task_id=tid and status<>'pending';
+ return null;
+end $;
+revoke all on function overseer_private.invalidate_dependency_approval() from public,anon,authenticated;
+create trigger invalidate_dependency_approval after insert or delete on public.dependencies
+for each row execute function overseer_private.invalidate_dependency_approval();
 
 commit;
