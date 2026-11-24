@@ -10,7 +10,7 @@ Private development workspace. One workspace. Total oversight.
 ## Setup
 1. In the Supabase project Auth dashboard, disable public signups and create/confirm your administrator user. The frontend is sign-in only.
 2. The initial schema is already applied to the dedicated Supabase project; the SQL is in `supabase/migrations`.
-3. Run `npm install`, then `npm run dev`. For release, generate and commit the npm lockfile, then use `npm ci` and `npm run build`.
+3. Run `npm ci`, then `npm run dev`. Use `npm ci` and `npm run build` for release; dependency changes must update and commit the lockfile intentionally.
 4. Configure GitHub Pages with GitHub Actions, after build and security checks pass.
 
 ## Agent workflow
@@ -21,7 +21,7 @@ Private development workspace. One workspace. Total oversight.
 - Never merge, deploy or delete production data merely because an approval row exists; validate the actual user's authorization. Queue eligibility is not an execution engine.
 
 ## Current scope
-Project creation, task list/board and editor, dependency management, queue, memory creation, decisions/session/activity read views, approval review. Automatic operational audit events, dependency and parent cycle guards, and atomic task claiming with one active session per task are implemented. Auth provisioning, end-to-end integration tests, GitHub Pages deployment and lockfile verification remain to be completed. No polling or background execution is enabled.
+Project creation, task list/board and editor, dependency management, queue, memory creation, decisions/session/activity read views, approval review. Automatic operational audit events, dependency and parent cycle guards, and atomic task claiming with one active session per task are implemented. Auth provisioning, end-to-end integration tests, GitHub Pages deployment and final lockfile-based CI verification remain to be completed. No polling or background execution is enabled.
 
 ## Task execution protocol
 
@@ -35,7 +35,7 @@ Initial imports are staged in the non-exposed `overseer_private.pending_projects
 
 ## Deployment
 
-Enable GitHub Pages under Settings → Pages → Build and deployment → GitHub Actions. After reviewing the verification workflow and committing its generated lockfile, manually run the Deploy OVERSEER workflow. Before deployment, disable public signup in Supabase Auth and create the administrator account. Keep service-role keys out of the browser and repository.
+Enable GitHub Pages under Settings → Pages → Build and deployment → GitHub Actions. After the lockfile-based verification workflow passes, manually run the Deploy OVERSEER workflow. Before deployment, disable public signup in Supabase Auth and create the administrator account. Keep service-role keys out of the browser and repository.
 
 ## Agent session RPCs (trusted connector only)
 
@@ -82,3 +82,7 @@ Run `npm test` to execute both domain and operations suites. See `AGENTS.md` for
 - **Suggested queue order:** priority first, then number of direct dependents, then existing deterministic tie-breakers. Advisory only; actual claiming order remains unchanged in PostgreSQL.
 - **Settings:** compact or comfortable density, default task view, and shortcut hints are stored locally per account. No additional infrastructure or background requests.
 - **Recovery:** application error boundary offers a reload without transmitting private diagnostics. It catches rendering errors, not all asynchronous or external failures.
+
+## Reproducible dependency installation
+
+The committed npm lockfile was obtained from successful CI run 45373826054 and verified byte-for-byte against its artifact. CI now requires `npm ci` instead of generating a new lockfile during a build. The temporary adoption workflow has been removed; normal verification is read-only. No Pages deployment or database migration is performed.
