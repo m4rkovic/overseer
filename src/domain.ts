@@ -54,3 +54,16 @@ export function wouldCreateParentCycle(taskId:string,parentId:string,tasks:reado
  const byId=new Map(tasks.map(t=>[t.id,t])),seen=new Set<string>();let id:string|null=parentId;
  while(id){if(id===taskId||seen.has(id))return true;seen.add(id);id=byId.get(id)?.parent_id||null;}return false;
 }
+
+export function isManualTaskStatus(status:string):boolean {
+ return statuses.includes(status)&&status!=='in_progress';
+}
+export function groupTasksByStatus(tasks:readonly Task[]):Map<string,Task[]> {
+ const groups=new Map<string,Task[]>();
+ for(const task of tasks){
+  const lane=groups.get(task.status)||[];
+  lane.push(task);
+  groups.set(task.status,lane);
+ }
+ return groups;
+}
