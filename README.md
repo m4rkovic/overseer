@@ -53,3 +53,14 @@ Always verify a checkpoint succeeds before further external writes. These databa
 - Task and record writes use explicit editable fields and an updated_at comparison to reject stale edits. Database RLS and constraints remain authoritative; UI locks are advisory, not authorization.
 - Paginated workspace reads occur on sign-in, explicit refresh and successful mutations. Activity remains limited to the most recent 100 events. No background polling.
 - Run `npm test` using Node 22 for dependency-free domain tests. Full frontend build and end-to-end browser verification are separate release gates.
+
+## Operations views
+
+- **Tasks / Bulk:** select filtered tasks and change priority or manual status. Each row uses a revision check, active sessions are excluded, and partial failures are reported. Bulk changes are not atomic across rows.
+- **Task detail:** description, acceptance criteria, next step, test result, branch, PR, relationships, approvals, sessions and recent activity.
+- **Dependencies:** topological levels and prerequisite relationships; unresolved cycles are flagged.
+- **Delivery:** project-scoped counts and recorded branch/PR/test state. This is not a live GitHub API integration.
+- **Handover:** a reviewable, copyable summary from the selected work session, project directives and accepted decisions.
+- **Export:** user-triggered local JSON for one project. It contains private data and only currently loaded activity (latest 100 across the workspace); it is not a complete database backup.
+
+Run `npm test` to execute both domain and operations suites. See `AGENTS.md` for the agent operating protocol. These changes use the existing database schema; no deployment or database changes are required for code review.
