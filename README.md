@@ -86,3 +86,15 @@ Run `npm test` to execute both domain and operations suites. See `AGENTS.md` for
 ## Reproducible dependency installation
 
 The committed npm lockfile was obtained from successful CI run 45373826054 and verified byte-for-byte against its artifact. CI now requires `npm ci` instead of generating a new lockfile during a build. The temporary adoption workflow has been removed; normal verification is read-only. No Pages deployment or database migration is performed.
+
+## Frontend architecture and maintenance
+
+- `App.tsx` is the authentication boundary; the authenticated workspace is loaded lazily.
+- `Workspace.tsx` coordinates navigation, scope, task editor and view composition. It does not issue raw table queries.
+- `hooks/useWorkspaceData.ts` owns workspace reads, stale-response protection and serialized mutations. Bulk writes stop scheduling further rows after unmount. Writes are never automatically retried.
+- `lib/workspaceApi.ts` owns database operations and revision-checked task/record updates. Approval resolution and dependency removal detect zero-row results rather than claiming success.
+- `components/WorkspaceShell.tsx`, `CommandPalette.tsx`, `TasksView.tsx` and `RecordViews.tsx` own presentation. Kanban tasks are grouped once per filtered task collection.
+- `domain.ts`, `operations.ts`, `planning.ts` and `context.ts` own pure domain computations. Keep database access and browser storage outside those modules.
+- Architecture tests reject direct Supabase client access in presentational components. Keep future changes focused; avoid adding a dependency just to implement a small utility.
+
+The current refactor does not change database schema or RLS, and does not publish the app. Frontend modal controls and task locks are not authorization boundaries. Real-account end-to-end tests, database-side concurrent-write tests and measured network/browser performance remain separate release gates.
