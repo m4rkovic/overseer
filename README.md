@@ -121,3 +121,9 @@ The current refactor does not change database schema or RLS, and does not publis
 2. Verify real Supabase Auth, RLS and REST behavior using the actual deployment configuration. Never expose a service role or secret key to the browser.
 3. Audit direct authenticated task and approval updates: UI locks are advisory, current owner-scoped policies do not enforce all workflow transitions. Before relying on the queue for autonomous agents, enforce allowed transitions, active-session restrictions and approval invalidation in a database migration reviewed separately. Repository state and actual user authorization still control external actions.
 4. Confirm final frontend, browser, dependency and isolated database CI results on the release revision. No deployment or merge is performed by these verification workflows.
+
+## Domain modules and coverage
+
+The public `src/domain.ts` facade preserves existing import paths. Models, GitHub link validation, task computations and record validation live in focused modules under `src/domain/`. Workspace API reads bind table names to typed browser projections and order fields; these are not full generated database types or runtime response validation. The dependency overview indexes edges by task, and topological graph construction appends to adjacency lists without copying the entire list per edge.
+
+Frontend CI publishes native Node coverage for the exercised domain tests as the `test-coverage` artifact. This measures unit-test execution, not browser UI or PostgreSQL coverage. No coverage threshold is assumed before reviewing the measured baseline.
