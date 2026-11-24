@@ -7,7 +7,7 @@ export type Approval={id:string;project_id:string;task_id:string;operation:strin
 export type Activity={id:string;project_id:string;task_id:string|null;event:string;created_at:string;actor_source:string;details:{before?:Record<string,unknown>|null;after?:Record<string,unknown>|null}};
 export type Dependency={project_id:string;task_id:string;depends_on_id:string};
 export const statuses=['backlog','ready','in_progress','blocked','review','done','cancelled'];
-export const tabs=['Overview','Projects','Tasks','Epics','Health','Execution queue','Project memory','Directives','Dependencies','Decisions','AI sessions','Handover','Delivery','Approvals','Activity'] as const;
+export const tabs=['Overview','Projects','Tasks','Epics','Health','Execution queue','Project memory','Directives','Dependencies','Decisions','AI sessions','Handover','AI context','Repositories','Delivery','Approvals','Activity'] as const;
 export type Tab=typeof tabs[number];
 export const blankTask=(project_id:string):Omit<Task,'id'>=>({project_id,parent_id:null,kind:'task',title:'',description:'',acceptance_criteria:'',next_step:'',branch:'',pr_url:'',test_result:'',status:'backlog',priority:2,requires_approval:false});
 export const message=(e:unknown)=>e instanceof Error?e.message:typeof e==='object'&&e!==null&&'message' in e?String(e.message):String(e);
