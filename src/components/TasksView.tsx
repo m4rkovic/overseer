@@ -1,4 +1,4 @@
-import {useState,useMemo} from 'react';
+import {useState,useMemo,lazy,Suspense} from 'react';
 import type {Dispatch,SetStateAction} from 'react';
 import {statuses,readable,defaultFilters,filterTasks,groupTasksByStatus,isManualTaskStatus} from '../domain';
 import type {Task,TaskFilters,Project,Work} from '../domain';
@@ -6,7 +6,7 @@ import type {BulkPatch} from '../operations';
 import type {ViewMode} from '../planning';
 import {Empty} from './primitives';
 import {SavedViews} from './Planning';
-import {BulkTasks} from './Operations';
+const BulkTasks=lazy(()=>import('./Operations').then(m=>({default:m.BulkTasks})));
 
 type TaskDisplayProps = {
   rows: Task[];
@@ -119,7 +119,7 @@ export function TasksView(props:Props){
     <SavedViews userId={userId} scope={scope} filters={{...filters,query:search}} mode={mode}
       onApply={v=>{setScope(projects.some(p=>p.id===v.scope)?v.scope:'');setFilters(v.filters);setSearch(v.filters.query);setMode(v.mode)}}/>
     {mode==='table'&&<TaskTable {...display}/>}
-    {mode==='bulk'&&<BulkTasks tasks={visibleTasks} sessions={works} busy={busy||loading} onApply={bulkApply} onOpen={openDetail}/>}
+    {mode==='bulk'&&<Suspense fallback={<p role="status">Loading bulk view…</p>}><BulkTasks tasks={visibleTasks} sessions={works} busy={busy||loading} onApply={bulkApply} onOpen={openDetail}/></Suspense>}
     {mode==='board'&&<TaskBoard {...display} disabled={busy||loading} activeTaskIds={activeTaskIds} changeStatus={changeStatus}/>}
   </section>;
 }
