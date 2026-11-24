@@ -71,7 +71,7 @@ for each row execute function overseer_private.guard_approval_resolution();
 -- Dependency edits affect the reviewed scope too. Lock the dependent task
 -- before checking its session so claims and dependency edits cannot silently overlap.
 create function overseer_private.guard_browser_dependency() returns trigger
-language plpgsql security invoker set search_path='' as $
+language plpgsql security invoker set search_path='' as $$
 declare pid uuid; tid uuid;
 begin
  if tg_op='DELETE' then pid:=old.project_id;tid:=old.task_id;
@@ -85,20 +85,20 @@ begin
  end if;
  if tg_op='DELETE' then return old;end if;
  return new;
-end $;
+end $$;
 revoke all on function overseer_private.guard_browser_dependency() from public,anon,authenticated;
 create trigger guard_browser_dependency before insert or delete on public.dependencies
 for each row execute function overseer_private.guard_browser_dependency();
 
 create function overseer_private.invalidate_dependency_approval() returns trigger
-language plpgsql security invoker set search_path='' as $
+language plpgsql security invoker set search_path='' as $$
 declare pid uuid;tid uuid;
 begin
  if tg_op='DELETE' then pid:=old.project_id;tid:=old.task_id;
  else pid:=new.project_id;tid:=new.task_id;end if;
  update public.approvals set status='pending' where project_id=pid and task_id=tid and status<>'pending';
  return null;
-end $;
+end $$;
 revoke all on function overseer_private.invalidate_dependency_approval() from public,anon,authenticated;
 create trigger invalidate_dependency_approval after insert or delete on public.dependencies
 for each row execute function overseer_private.invalidate_dependency_approval();
