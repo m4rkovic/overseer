@@ -74,3 +74,11 @@ Run `npm test` to execute both domain and operations suites. See `AGENTS.md` for
 - Activity filters use the latest 100 loaded workspace events; no extra network calls or background polling.
 - Shortcuts: Ctrl/Cmd+K search, Alt+Shift+N new task, Alt+Shift+R refresh, Alt+Shift+T tasks.
 - Task constraint calculations use a shared indexed map instead of scanning all tasks repeatedly. No new runtime dependency or migration.
+
+## Repository context and workspace settings
+
+- **Repositories:** generate a read-only snapshot locally using an authenticated GitHub CLI: `node scripts/github-snapshot.mjs OWNER/REPO > snapshot.json`. Import the JSON into the matching project. The app validates identity and allowed fields, never stores a GitHub token, and keeps snapshots in memory only until sign-out or reload. Recent default-branch commits and recent PRs are bounded, not a complete GitHub history. Imported snapshots are not live verification.
+- **AI context:** copy a project-scoped overview of directives, memory, accepted decisions, eligible tasks, recent sessions, approvals and optional imported repository state. Review private data before sharing. These records do not grant authorization.
+- **Suggested queue order:** priority first, then number of direct dependents, then existing deterministic tie-breakers. Advisory only; actual claiming order remains unchanged in PostgreSQL.
+- **Settings:** compact or comfortable density, default task view, and shortcut hints are stored locally per account. No additional infrastructure or background requests.
+- **Recovery:** application error boundary offers a reload without transmitting private diagnostics. It catches rendering errors, not all asynchronous or external failures.
