@@ -2,30 +2,35 @@ import {db} from './supabase';
 import type {Task,TaskDraft,Project,Note,Decision,Work,Approval,Activity,Dependency} from '../domain';
 import {taskPayload,isManualTaskStatus} from '../domain';
 
-const PAGE_SIZE=500;
-async function readRows<T>(table:string,order:string,ascending=true,secondary='id',tertiary?:string):Promise<T[]> {
- const out:T[]=[];
- for(let offset=0;;offset+=PAGE_SIZE){
-  let query=db.from(table).select('*').order(order,{ascending});
-  if(order!==secondary)query=query.order(secondary);
-  if(tertiary&&tertiary!==order&&tertiary!==secondary)query=query.order(tertiary);
-  const {data,error}=await query.range(offset,offset+PAGE_SIZE-1);
-  if(error)throw error;
-  const rows=(data??[]) as unknown as T[];
-  out.push(...rows);
-  if(rows.length<PAGE_SIZE)return out;
- }
+import {readWithRetry,readPages} from './readPolicy';
+
+const taskColumns='id,project_id,parent_id,kind,title,description,acceptance_criteria,next_step,branch,pr_url,test_result,status,priority,requires_approval,updated_at,created_at';
+async function readRows<T>(table:string,columns:string,signal:AbortSignal,order:string,ascending=true,secondary='id',tertiary?:string):Promise<T[]>{
+ return readPages<T>(async(offset,size)=>{
+  const data=await readWithRetry(async()=>{
+   let query=db.from(table).select(columns).order(order,{ascending});
+   if(order!==secondary)query=query.order(secondary);
+   if(tertiary&&tertiary!==order&&tertiary!==secondary)query=query.order(tertiary);
+   return await query.range(offset,offset+size-1).abortSignal(signal);
+  },signal);
+  return (data??[]) as unknown as T[];
+ },signal);
 }
-async function recentActivity():Promise<Activity[]> {
- const {data,error}=await db.from('activity_log').select('*').order('created_at',{ascending:false}).order('id').limit(100);
- if(error)throw error;return (data??[]) as Activity[];
+async function recentActivity(signal:AbortSignal):Promise<Activity[]>{
+ const data=await readWithRetry(()=>db.from('activity_log').select('id,project_id,task_id,event,created_at,actor_source,details').order('created_at',{ascending:false}).order('id').limit(100).abortSignal(signal),signal);
+ return (data??[]) as Activity[];
 }
-export async function loadWorkspace(){
+export async function loadWorkspace(signal:AbortSignal){
  const [projects,tasks,queue,notes,decisions,works,approvals,activity,deps]=await Promise.all([
-  readRows<Project>('projects','name'),readRows<Task>('tasks','priority',true,'created_at','id'),readRows<Task>('execution_queue','priority',true,'created_at','id'),
-  readRows<Note>('project_memory','updated_at',false),readRows<Decision>('decisions','created_at',false),
-  readRows<Work>('work_sessions','started_at',false),readRows<Approval>('approvals','created_at',false),
-  recentActivity(),readRows<Dependency>('dependencies','task_id',true,'depends_on_id')
+  readRows<Project>('projects','id,name,description,repository,status,updated_at',signal,'name'),
+  readRows<Task>('tasks',taskColumns,signal,'priority',true,'created_at','id'),
+  readRows<Task>('execution_queue',taskColumns,signal,'priority',true,'created_at','id'),
+  readRows<Note>('project_memory','id,project_id,title,content,category,updated_at',signal,'updated_at',false),
+  readRows<Decision>('decisions','id,project_id,title,rationale,outcome,status,updated_at',signal,'created_at',false),
+  readRows<Work>('work_sessions','id,project_id,task_id,summary,next_step,status,started_at,heartbeat_at,lease_expires_at',signal,'started_at',false),
+  readRows<Approval>('approvals','id,project_id,task_id,operation,status',signal,'created_at',false),
+  recentActivity(signal),
+  readRows<Dependency>('dependencies','project_id,task_id,depends_on_id',signal,'task_id',true,'depends_on_id')
  ]);
  return {projects,tasks,queue,notes,decisions,works,approvals,activity,deps};
 }
