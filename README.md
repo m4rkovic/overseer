@@ -98,3 +98,11 @@ The committed npm lockfile was obtained from successful CI run 45373826054 and v
 - Architecture tests reject direct Supabase client access in presentational components. Keep future changes focused; avoid adding a dependency just to implement a small utility.
 
 The current refactor does not change database schema or RLS, and does not publish the app. Frontend modal controls and task locks are not authorization boundaries. Real-account end-to-end tests, database-side concurrent-write tests and measured network/browser performance remain separate release gates.
+
+## Network, bundle and browser verification
+
+- Full workspace reads use explicit field projections, cancel superseded reads and abort when the workspace unmounts. Each refresh has a 20-second timeout. A transient read error may be retried once; auth, rate-limit and validation errors are not retried. Never automatically retry a mutation.
+- Pagination remains deterministic but is not a cross-table transactional snapshot. The reader fails visibly if the per-table safety limit is reached. An explicit refresh and successful mutations still load the full workspace for consistency; no polling.
+- Operations, repository context and settings are loaded on demand. CI records gzip bundle size with a 200 KiB aggregate JS/CSS budget and a 130 KiB per-JS-asset budget. Build #54 measured 120,888 bytes gzip for all JS/CSS assets.
+- `tests/browser_smoke.py` tests the built frontend using Playwright with synthetic auth and API responses. Run `python -m pip install playwright==1.57.0`, `python -m playwright install chromium`, then `python tests/browser_smoke.py dist`. Browser traffic is routed only to a local static server or mocked API; no live Supabase access. The separate Browser smoke workflow verifies the same test in CI. It does not replace actual Auth/RLS integration tests.
+- CSS uses shared visual tokens, normal readable formatting and scrollable sidebar navigation. No animation library or new npm runtime dependencies.
