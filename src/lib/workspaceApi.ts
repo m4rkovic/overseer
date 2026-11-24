@@ -1,6 +1,6 @@
 import {db} from './supabase';
 import type {Task,TaskDraft,Project,Note,Decision,Work,Approval,Activity,Dependency} from '../domain';
-import {taskPayload,isManualTaskStatus} from '../domain';
+import {taskPayload,isManualTaskStatus,taskChanges} from '../domain';
 
 import {readWithRetry,readPages} from './readPolicy';
 
@@ -36,11 +36,13 @@ export async function loadWorkspace(signal:AbortSignal){
 }
 export type WorkspaceData=Awaited<ReturnType<typeof loadWorkspace>>;
 export const emptyWorkspace:WorkspaceData={projects:[],tasks:[],queue:[],notes:[],decisions:[],works:[],approvals:[],activity:[],deps:[]};
-export async function saveTaskRow(task:Task|TaskDraft){
+export async function saveTaskRow(task:Task|TaskDraft,original:Task|TaskDraft){
  const payload=taskPayload(task);
  if(!('id' in task))return db.from('tasks').insert(payload);
  if(!task.updated_at)return {error:new Error('Refresh the workspace before editing this task.')};
- const {project_id:_,...changes}=payload;
+ if(!('id' in original)||original.id!==task.id||original.project_id!==task.project_id||original.updated_at!==task.updated_at)return {error:new Error('Task editor revision is inconsistent. Reopen the task.')};
+ const changes=taskChanges(original,task);
+ if(!Object.keys(changes).length)return {error:new Error('No task changes to save.')};
  const result=await db.from('tasks').update(changes).eq('id',task.id).eq('updated_at',task.updated_at).select('id');
  return {error:result.error||(result.data?.length!==1?new Error('Task changed in another session. Refresh and reopen the task.'):null)};
 }
