@@ -51,12 +51,12 @@ export function Workspace({session}:{session:Session}){
  const queueIds=useMemo(()=>new Set(queue.map(t=>t.id)),[queue]);
  function openDetail(task:Task){setDetailId(task.id);setTab('Tasks');setScope(task.project_id);setPalette(false);}
  const bulkApply=(rows:Task[],patch:BulkPatch)=>applyBulk(rows,patch,activeTaskIds);
- async function saveTask(e:React.FormEvent){
-  e.preventDefault();if(!editor||editorLocked)return;
+ async function saveTask(e:React.FormEvent,original:Task|TaskDraft){
+  e.preventDefault();if(!editor||editorLocked||loading||busy)return;
   if(!editor.title.trim())return;
   if(editor.status==='in_progress'&&(!('id' in editor)||tasks.find(t=>t.id===editor.id)?.status!=='in_progress')){setError('Start work through the agent claim, not manual status editing.');return;}
   if('id' in editor&&editor.parent_id&&wouldCreateParentCycle(editor.id,editor.parent_id,tasks)){setError('Parent relationship would create a cycle.');return;}
-  if(await mutate(()=>saveTaskRow(editor)))setEditor(null);
+  if(await mutate(()=>saveTaskRow(editor,original)))setEditor(null);
  }
  async function changeStatus(id:string,status:string){
   const task=tasks.find(t=>t.id===id);
@@ -103,6 +103,6 @@ export function Workspace({session}:{session:Session}){
  </Suspense>
  </WorkspaceShell>
  {palette&&<CommandPalette projects={projects} tasks={tasks} projectName={projectName} onNavigate={navigate} onProject={openProject} onTask={openDetail} onClose={()=>setPalette(false)}/>} 
- {editor&&<TaskEditor editor={editor} projects={projects} tasks={tasks} deps={deps} busy={busy} editorLocked={editorLocked} error={error} setEditor={setEditor} saveTask={saveTask} mutate={mutate}/>}
+ {editor&&<TaskEditor editor={editor} projects={projects} tasks={tasks} deps={deps} busy={busy||loading} editorLocked={editorLocked} error={error} setEditor={setEditor} saveTask={saveTask} mutate={mutate}/>}
  </>
 }
