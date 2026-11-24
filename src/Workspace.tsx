@@ -1,11 +1,11 @@
-import React,{useEffect,useState,useCallback,useRef,useMemo} from 'react';
+import React,{useEffect,useState,useMemo} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {db} from './lib/supabase';
-import {statuses,tabs,blankTask,message,readable,filterTasks,defaultFilters,buildTaskBlockerMap,wouldCreateParentCycle} from './domain';
+import {statuses,tabs,blankTask,readable,filterTasks,defaultFilters,buildTaskBlockerMap,wouldCreateParentCycle} from './domain';
 import type {Task,TaskDraft,Tab,TaskFilters} from './domain';
 import {Empty} from './components/primitives';
 import {TaskEditor} from './components/TaskEditor';
-import {loadWorkspace,emptyWorkspace,saveTaskRow,moveTask,saveRecord,updateTaskFields} from './lib/workspaceApi';
+import {saveTaskRow,moveTask,saveRecord} from './lib/workspaceApi';
 import {RecordForm,ProjectRegistry,DependencyOverview} from './components/Records';
 import type {RecordEditor,RecordSubmission} from './components/Records';
 import {BulkTasks,DependencyGraph,TaskDetail,ProjectOperations,Handover} from './components/Operations';
@@ -15,26 +15,19 @@ import {RepositoryPanel,ContextPanel,RankedQueue} from './components/Context';
 import type {RepositorySnapshot} from './context';
 import {usePreferences} from './lib/preferences';
 import {SettingsPanel} from './components/Settings';
+import {useWorkspaceData} from './hooks/useWorkspaceData';
 export function Workspace({session}:{session:Session}){
  const preferences=usePreferences(session.user.id);
- const [tab,setTab]=useState<Tab>('Overview'),[data,setData]=useState(emptyWorkspace);
+ const [tab,setTab]=useState<Tab>('Overview');
+ const {data,loading,busy,error,notice,setError,refresh,mutate,bulkApply:applyBulk}=useWorkspaceData();
  const {projects,tasks,queue,notes,decisions,works,approvals,activity,deps}=data;
- const requestId=useRef(0),mutationLock=useRef(false);
  const [filters,setFilters]=useState<TaskFilters>(defaultFilters),[dragged,setDragged]=useState<string|null>(null);
- const [notice,setNotice]=useState('');
  const [snapshots,setSnapshots]=useState<Record<string,RepositorySnapshot>>({});
 
- const [scope,setScope]=useState(''),[search,setSearch]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[editor,setEditor]=useState<Task|TaskDraft|null>(null),[recordEditor,setRecordEditor]=useState<RecordEditor|null>(null),[mode,setMode]=useState<'table'|'board'|'bulk'>(preferences.value.defaultMode);
+ const [scope,setScope]=useState(''),[search,setSearch]=useState(''),[editor,setEditor]=useState<Task|TaskDraft|null>(null),[recordEditor,setRecordEditor]=useState<RecordEditor|null>(null),[mode,setMode]=useState<'table'|'board'|'bulk'>(preferences.value.defaultMode);
  const [detailId,setDetailId]=useState<string|null>(null);
  const [palette,setPalette]=useState(false),[command,setCommand]=useState('');
  useEffect(()=>{const handler=(e:KeyboardEvent)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setPalette(v=>!v);setCommand('')}else if(e.key==='Escape'){setPalette(false)}};window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler)},[]);
- const refresh=useCallback(async()=>{
-  const id=++requestId.current;setLoading(true);setError('');
-  try{const next=await loadWorkspace();if(id===requestId.current){setData(next);return true;}return false;}
-  catch(e){if(id===requestId.current)setError(message(e));return false;}
-  finally{if(id===requestId.current)setLoading(false);}
- },[]);
- useEffect(()=>{void refresh();return()=>{requestId.current++;}},[refresh]);
  const scoped=<T extends {project_id:string}>(rows:T[])=>rows.filter(r=>!scope||r.project_id===scope);
  const visibleTasks=useMemo(()=>filterTasks(tasks.filter(t=>!scope||t.project_id===scope),{...filters,query:search}),[tasks,scope,filters,search]);
  const activeTaskIds=useMemo(()=>new Set(works.filter(w=>w.status==='active'&&w.task_id).map(w=>w.task_id)),[works]);
@@ -44,28 +37,7 @@ export function Workspace({session}:{session:Session}){
  const projectName=(id:string)=>projects.find(p=>p.id===id)?.name||'Unknown project';
  const detail=tasks.find(t=>t.id===detailId);
  function openDetail(task:Task){setDetailId(task.id);setTab('Tasks');setScope(task.project_id);setPalette(false);}
- async function bulkApply(rows:Task[],patch:BulkPatch){
-  if(mutationLock.current)return;
-  mutationLock.current=true;setBusy(true);setError('');setNotice('');
-  let saved=0;const failures:string[]=[];
-  try{
-   for(const task of rows){
-    if(activeTaskIds.has(task.id)){failures.push(task.title+': active session');continue;}
-    try{const result=await updateTaskFields(task,patch);if(result.error)throw result.error;saved++;}catch(e){failures.push(task.title+': '+message(e));}
-   }
-   const loaded=await refresh();
-   setNotice(saved+' of '+rows.length+' tasks updated.'+(!loaded?' Refresh required.':''));
-   if(failures.length)setError(failures.join('\n'));
-  }finally{mutationLock.current=false;setBusy(false);}
- }
- async function mutate(fn:()=>PromiseLike<{error:unknown}>){
-  if(mutationLock.current)return false;
-  mutationLock.current=true;setBusy(true);setError('');setNotice('');
-  try{const {error}=await fn();if(error)throw error;
-   const loaded=await refresh();setNotice(loaded?'Changes saved.':'Changes saved. Refresh to load the latest state.');return true;
-  }catch(e){setError(message(e));return false;}
-  finally{mutationLock.current=false;setBusy(false);}
- }
+ const bulkApply=(rows:Task[],patch:BulkPatch)=>applyBulk(rows,patch,activeTaskIds);
  async function saveTask(e:React.FormEvent){
   e.preventDefault();if(!editor||editorLocked)return;
   if(!editor.title.trim())return;
