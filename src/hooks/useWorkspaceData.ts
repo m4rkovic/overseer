@@ -14,6 +14,8 @@ export function useWorkspaceData(){
  const activeRead=useRef<AbortController|null>(null);
  const mutationLock=useRef(false);
  const mounted=useRef(false);
+ const fresh=useRef(false);
+ const [stale,setStale]=useState(true);
 
  const refresh=useCallback(async()=>{
   if(!mounted.current)return false;
@@ -22,10 +24,10 @@ export function useWorkspaceData(){
   const controller=new AbortController();
   activeRead.current=controller;
   const timeout=setTimeout(()=>controller.abort(),20000);
-  setLoading(true);setError('');
+  fresh.current=false;setStale(true);setLoading(true);setError('');
   try{
    const next=await loadWorkspace(controller.signal);
-   if(mounted.current&&id===requestId.current){setData(next);return true;}
+   if(mounted.current&&id===requestId.current){setData(next);fresh.current=true;setStale(false);return true;}
    return false;
   }catch(e){
    if(mounted.current&&id===requestId.current)setError(controller.signal.aborted?'Read cancelled or timed out. Refresh to retry.':message(e));
@@ -45,6 +47,7 @@ export function useWorkspaceData(){
 
  async function runMutation<T>(operation:()=>Promise<T>,complete:(result:T,loaded:boolean)=>void):Promise<boolean>{
   if(mutationLock.current||!mounted.current)return false;
+  if(!fresh.current){setError('Workspace data is stale or unavailable. Refresh before saving changes.');return false;}
   mutationLock.current=true;setBusy(true);setError('');setNotice('');
   try{
    const result=await operation();
@@ -82,5 +85,5 @@ export function useWorkspaceData(){
    if(failures.length)setError(failures.join('\n'));
   });
  }
- return {data,loading,busy,error,notice,setError,refresh,mutate,bulkApply};
+ return {data,loading,busy,stale,error,notice,setError,refresh,mutate,bulkApply};
 }
