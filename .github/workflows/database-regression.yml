@@ -22,13 +22,13 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
-    env:
-      TEST_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Apply migrations to disposable database
+        env:
+          TEST_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         shell: bash
         run: |
           set -euo pipefail
@@ -38,4 +38,6 @@ jobs:
           psql_ci < supabase/tests/session_recovery.sql
           psql_ci < supabase/tests/isolated_owner_rls.sql
       - name: Test concurrent claims
+        env:
+          TEST_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: python3 supabase/tests/concurrent_claim.py
