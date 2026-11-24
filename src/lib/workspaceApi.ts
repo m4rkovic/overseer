@@ -28,7 +28,7 @@ export async function loadWorkspace(signal:AbortSignal){
   readRows<Note>('project_memory','id,project_id,title,content,category,updated_at',signal,'updated_at',false),
   readRows<Decision>('decisions','id,project_id,title,rationale,outcome,status,updated_at',signal,'created_at',false),
   readRows<Work>('work_sessions','id,project_id,task_id,summary,next_step,status,started_at,heartbeat_at,lease_expires_at',signal,'started_at',false),
-  readRows<Approval>('approvals','id,project_id,task_id,operation,status',signal,'created_at',false),
+  readRows<Approval>('approvals','id,project_id,task_id,operation,status,updated_at',signal,'created_at',false),
   recentActivity(signal),
   readRows<Dependency>('dependencies','project_id,task_id,depends_on_id',signal,'task_id',true,'depends_on_id')
  ]);
@@ -65,8 +65,9 @@ export async function updateTaskFields(task:Task,patch:{status?:string;priority?
  return {error:result.error||(!result.data?new Error('Task changed in another session. Refresh and try again.'):null)};
 }
 
-export async function resolveApproval(approvalId:string,status:'approved'|'rejected'){
- const result=await db.from('approvals').update({status}).eq('id',approvalId).eq('status','pending').select('id').maybeSingle();
+export async function resolveApproval(approval:Approval,status:'approved'|'rejected'){
+ if(!approval.updated_at)return {error:new Error('Refresh before resolving this approval.')};
+ const result=await db.from('approvals').update({status}).eq('id',approval.id).eq('updated_at',approval.updated_at).eq('status','pending').select('id').maybeSingle();
  return {error:result.error||(!result.data?new Error('Approval is no longer pending. Refresh the workspace.'):null)};
 }
 export async function addDependency(dependency:Dependency){
