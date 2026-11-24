@@ -41,6 +41,16 @@ begin
  if exists(select 1 from public.execution_queue where id='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee') then raise exception 'Unapproved task claimable'; end if;
  update public.approvals set status='approved' where task_id='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
  if not exists(select 1 from public.execution_queue where id='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee') then raise exception 'Reapproved task missing from queue'; end if;
+ begin
+  insert into public.dependencies(project_id,task_id,depends_on_id) values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','cccccccc-cccc-4ccc-8ccc-cccccccccccc','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee');
+  raise exception 'Active dependency edit allowed';
+ exception when insufficient_privilege then null; end;
+ insert into public.dependencies(project_id,task_id,depends_on_id) values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+ if not exists(select 1 from public.approvals where task_id='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee' and status='pending') then raise exception 'Dependency edit did not invalidate approval'; end if;
+ update public.approvals set status='approved' where task_id='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+ delete from public.dependencies where task_id='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+ if not exists(select 1 from public.approvals where task_id='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee' and status='pending') then raise exception 'Dependency removal did not invalidate approval'; end if;
+
 end $$;
 reset role;
 set local role service_role;
