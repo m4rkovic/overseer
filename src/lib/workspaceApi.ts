@@ -1,0 +1,44 @@
+import {db} from './supabase';
+import type {Task,TaskDraft,Project,Note,Decision,Work,Approval,Activity,Dependency} from '../domain';
+import {taskPayload} from '../domain';
+
+const PAGE_SIZE=500;
+async function readRows<T>(table:string,order:string,ascending=true,secondary='id'):Promise<T[]> {
+ const out:T[]=[];
+ for(let offset=0;;offset+=PAGE_SIZE){
+  let query=db.from(table).select('*').order(order,{ascending});
+  if(order!==secondary)query=query.order(secondary);
+  const {data,error}=await query.range(offset,offset+PAGE_SIZE-1);
+  if(error)throw error;
+  const rows=(data??[]) as T[];
+  out.push(...rows);
+  if(rows.length<PAGE_SIZE)return out;
+ }
+}
+async function recentActivity():Promise<Activity[]> {
+ const {data,error}=await db.from('activity_log').select('*').order('created_at',{ascending:false}).order('id').limit(100);
+ if(error)throw error;return (data??[]) as Activity[];
+}
+export async function loadWorkspace(){
+ const [projects,tasks,queue,notes,decisions,works,approvals,activity,deps]=await Promise.all([
+  readRows<Project>('projects','name'),readRows<Task>('tasks','priority'),readRows<Task>('execution_queue','priority'),
+  readRows<Note>('project_memory','updated_at',false),readRows<Decision>('decisions','created_at',false),
+  readRows<Work>('work_sessions','started_at',false),readRows<Approval>('approvals','created_at',false),
+  recentActivity(),readRows<Dependency>('dependencies','task_id',true,'depends_on_id')
+ ]);
+ return {projects,tasks,queue,notes,decisions,works,approvals,activity,deps};
+}
+export type WorkspaceData=Awaited<ReturnType<typeof loadWorkspace>>;
+export const emptyWorkspace:WorkspaceData={projects:[],tasks:[],queue:[],notes:[],decisions:[],works:[],approvals:[],activity:[],deps:[]};
+export async function saveTaskRow(task:Task|TaskDraft){
+ const payload=taskPayload(task);
+ if(!('id' in task))return db.from('tasks').insert(payload);
+ if(!task.updated_at)return {error:new Error('Refresh the workspace before editing this task.')};
+ const result=await db.from('tasks').update(payload).eq('id',task.id).eq('updated_at',task.updated_at).select('id').maybeSingle();
+ return {error:result.error||(!result.data?new Error('Task changed in another session. Refresh and reopen the task.'):null)};
+}
+export async function moveTask(task:Task,status:string){
+ if(!task.updated_at)return {error:new Error('Refresh before moving this task.')};
+ const result=await db.from('tasks').update({status}).eq('id',task.id).eq('updated_at',task.updated_at).select('id').maybeSingle();
+ return {error:result.error||(!result.data?new Error('Task changed in another session. Refresh and try again.'):null)};
+}
