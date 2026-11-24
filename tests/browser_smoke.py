@@ -120,6 +120,7 @@ def main():
             page.goto(origin+'/')
             expect(page.get_by_role('button', name='Sign in', exact=True)).to_be_visible()
             expect(page.get_by_text('PRIVATE WORKSPACE / AUTHORIZATION', exact=True)).to_have_count(0)
+            assert page.locator('.login').evaluate("el => getComputedStyle(el).backgroundImage") == 'none', 'Login must have a solid background'
             assert mock.reads == 0, 'Logged-out browser requested workspace records'
             page.get_by_label('Email').fill('demo@example.invalid')
             page.get_by_label('Password').fill('fixture-password')
