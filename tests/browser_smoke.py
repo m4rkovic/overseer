@@ -135,7 +135,7 @@ def main():
             expect(dialog).not_to_be_visible()
             expect(page.get_by_role('heading', name='Updated fixture task', exact=True)).to_be_visible()
             assert len(mock.writes) == 1, mock.writes
-            assert 'id' not in mock.writes[0] and 'updated_at' not in mock.writes[0]
+            assert not {'id', 'updated_at', 'project_id'}.intersection(mock.writes[0])
             # A concurrent external edit must not be overwritten by a stale form.
             page.get_by_role('button', name='Edit', exact=True).click()
             expect(dialog).to_be_visible()
@@ -143,6 +143,7 @@ def main():
             mock.tasks[0].update(title='Concurrent edit', updated_at='2026-01-03T00:00:00Z')
             dialog.get_by_role('button', name='Save task').click()
             expect(dialog.get_by_role('alert')).to_contain_text('Task changed in another session')
+            assert len(mock.writes) == 2, mock.writes
             assert mock.tasks[0]['title'] == 'Concurrent edit'
             dialog.get_by_role('button', name='Close', exact=True).click()
             page.get_by_role('button', name='Refresh', exact=True).click()
