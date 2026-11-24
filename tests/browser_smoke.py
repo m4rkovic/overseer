@@ -31,6 +31,8 @@ class MockApi:
         self.unexpected = []
         self.reads = 0
         self.fail_task_reads = 0
+        self.fail_task_writes = 0
+        self.sessions = []
 
     def handle(self, route):
         request = route.request
@@ -68,7 +70,7 @@ class MockApi:
                     self.fail_task_reads -= 1
                     reply({'message': 'Synthetic transient failure', 'code': 'FIXTURE'}, 503)
                     return
-                rows = {'projects': self.projects, 'tasks': self.tasks, 'execution_queue': [t for t in self.tasks if t['status']=='ready']}.get(table, [])
+                rows = {'projects': self.projects, 'tasks': self.tasks, 'execution_queue': [t for t in self.tasks if t['status']=='ready' and not any(w['task_id']==t['id'] and w['status']=='active' for w in self.sessions)], 'work_sessions': self.sessions}.get(table, [])
                 headers['content-range'] = f'0-{len(rows)-1}/{len(rows)}' if rows else '*/0'
                 reply(rows)
                 return
@@ -76,6 +78,10 @@ class MockApi:
                 query = parse_qs(url.query)
                 payload = request.post_data_json
                 self.writes.append(payload)
+                if self.fail_task_writes:
+                    self.fail_task_writes -= 1
+                    reply({'message': 'Synthetic write failure', 'code': 'FIXTURE'}, 503)
+                    return
                 rows = [t for t in self.tasks if query.get('id') == ['eq.'+t['id']] and query.get('updated_at') == ['eq.'+t['updated_at']]]
                 for t in rows:
                     t.update(payload)
@@ -130,9 +136,43 @@ def main():
             expect(page.get_by_role('heading', name='Updated fixture task', exact=True)).to_be_visible()
             assert len(mock.writes) == 1, mock.writes
             assert 'id' not in mock.writes[0] and 'updated_at' not in mock.writes[0]
+            # A concurrent external edit must not be overwritten by a stale form.
+            page.get_by_role('button', name='Edit', exact=True).click()
+            expect(dialog).to_be_visible()
+            dialog.get_by_label('Title', exact=True).fill('Stale edit')
+            mock.tasks[0].update(title='Concurrent edit', updated_at='2026-01-03T00:00:00Z')
+            dialog.get_by_role('button', name='Save task').click()
+            expect(dialog.get_by_role('alert')).to_contain_text('Task changed in another session')
+            assert mock.tasks[0]['title'] == 'Concurrent edit'
+            dialog.get_by_role('button', name='Close', exact=True).click()
+            page.get_by_role('button', name='Refresh', exact=True).click()
+            expect(page.get_by_role('heading', name='Concurrent edit', exact=True)).to_be_visible()
+            # A transient write failure must not trigger an automatic second write.
+            page.get_by_role('button', name='Edit', exact=True).click()
+            dialog.get_by_label('Title', exact=True).fill('Write failure test')
+            before = len(mock.writes)
+            mock.fail_task_writes = 1
+            dialog.get_by_role('button', name='Save task').click()
+            expect(dialog.get_by_role('alert')).to_contain_text('Synthetic write failure')
+            page.wait_for_timeout(500)
+            assert len(mock.writes) == before + 1
+            assert mock.tasks[0]['title'] == 'Concurrent edit'
+            dialog.get_by_role('button', name='Close', exact=True).click()
+            # Active sessions make task editing read-only in the browser.
+            mock.sessions = [{'id': USER, 'project_id': PROJECT, 'task_id': TASK, 'summary': '', 'next_step': '', 'status': 'active', 'started_at': STAMP, 'heartbeat_at': STAMP, 'lease_expires_at': '2099-01-01T00:00:00Z'}]
+            page.get_by_role('button', name='Refresh', exact=True).click()
+            expect(page.get_by_role('button', name='Refresh', exact=True)).to_be_enabled()
+            page.get_by_role('button', name='Edit', exact=True).click()
+            expect(dialog.get_by_label('Title', exact=True)).to_be_disabled()
+            expect(dialog.get_by_role('button', name='Save task')).to_be_disabled()
+            page.keyboard.press('Escape')
+            expect(dialog).not_to_be_visible()
+            mock.sessions = []
+            page.get_by_role('button', name='Refresh', exact=True).click()
+            expect(page.get_by_role('button', name='Refresh', exact=True)).to_be_enabled()
             page.get_by_role('button', name='Back', exact=True).click()
             page.get_by_role('button', name='Board', exact=True).click()
-            expect(page.locator('.task-card').filter(has_text='Updated fixture task')).to_be_visible()
+            expect(page.locator('.task-card').filter(has_text='Concurrent edit')).to_be_visible()
             page.keyboard.press('Control+k')
             palette = page.get_by_role('dialog', name='Command palette')
             expect(palette).to_be_visible()
@@ -146,12 +186,20 @@ def main():
             expect(page.get_by_role('button', name='Refresh', exact=True)).to_be_enabled()
             assert mock.fail_task_reads == 0
             assert not page.get_by_role('alert').count(), 'Read retry left a visible error'
+            # Mobile layout and keyboard access: check main navigation is still reachable.
+            page.set_viewport_size({'width': 390, 'height': 844})
+            expect(page.get_by_role('navigation', name='Workspace navigation')).to_be_visible()
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), 'Unexpected horizontal page overflow'
+            page.keyboard.press('Control+k')
+            expect(palette.get_by_role('textbox')).to_be_focused()
+            page.keyboard.press('Escape')
+            expect(palette).not_to_be_visible()
             page.get_by_role('button', name='Sign out', exact=True).click()
             expect(page.get_by_role('button', name='Sign in', exact=True)).to_be_visible()
             assert not errors, errors
             assert not mock.unexpected, mock.unexpected
             browser.close()
-            print('PASS: login, task detail/edit, board, palette, settings, retry, logout; all API requests isolated')
+            print('PASS: login, task edit, stale-write conflict, no write retry, active-session lock, board, palette, settings, read retry, mobile, logout; all API requests isolated')
     finally:
         server.shutdown()
         server.server_close()
