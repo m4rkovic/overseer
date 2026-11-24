@@ -1,7 +1,7 @@
 import React,{useEffect,useState,useCallback,useRef,useMemo} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {db} from './lib/supabase';
-import {statuses,tabs,blankTask,message,readable,filterTasks,defaultFilters,taskBlockers,wouldCreateParentCycle} from './domain';
+import {statuses,tabs,blankTask,message,readable,filterTasks,defaultFilters,buildTaskBlockerMap,wouldCreateParentCycle} from './domain';
 import type {Task,TaskDraft,Tab,TaskFilters} from './domain';
 import {Empty} from './components/primitives';
 import {TaskEditor} from './components/TaskEditor';
@@ -33,7 +33,7 @@ export function Workspace({session}:{session:Session}){
  const visibleTasks=useMemo(()=>filterTasks(tasks.filter(t=>!scope||t.project_id===scope),{...filters,query:search}),[tasks,scope,filters,search]);
  const activeTaskIds=useMemo(()=>new Set(works.filter(w=>w.status==='active'&&w.task_id).map(w=>w.task_id)),[works]);
  const editorLocked=!!editor&&'id' in editor&&activeTaskIds.has(editor.id);
- const blockerMap=useMemo(()=>new Map(tasks.map(t=>[t.id,taskBlockers(t,tasks,deps,approvals,works)])),[tasks,deps,approvals,works]);
+ const blockerMap=useMemo(()=>buildTaskBlockerMap(tasks,deps,approvals,works),[tasks,deps,approvals,works]);
  const blockers=(t:Task)=>blockerMap.get(t.id)||[];
  const projectName=(id:string)=>projects.find(p=>p.id===id)?.name||'Unknown project';
  const detail=tasks.find(t=>t.id===detailId);
