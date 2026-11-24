@@ -106,3 +106,18 @@ The current refactor does not change database schema or RLS, and does not publis
 - Operations, repository context and settings are loaded on demand. CI records gzip bundle size with a 200 KiB aggregate JS/CSS budget and a 130 KiB per-JS-asset budget. Build #54 measured 120,888 bytes gzip for all JS/CSS assets.
 - `tests/browser_smoke.py` tests the built frontend using Playwright with synthetic auth and API responses. Run `python -m pip install playwright==1.57.0`, `python -m playwright install chromium`, then `python tests/browser_smoke.py dist`. Browser traffic is routed only to a local static server or mocked API; no live Supabase access. The separate Browser smoke workflow verifies the same test in CI. It does not replace actual Auth/RLS integration tests.
 - CSS uses shared visual tokens, normal readable formatting and scrollable sidebar navigation. No animation library or new npm runtime dependencies.
+
+## Security and release verification
+
+- Production build uses a restrictive meta Content Security Policy (self-hosted scripts/styles, HTTPS Supabase origin only for API requests) and no-referrer policy. Meta CSP is defense in depth, not equivalent to all HTTP security headers; frame-ancestors is not enforced by meta CSP. A browser build rejects explicitly configured non-publishable Supabase keys.
+- External GitHub links are validated and canonicalized. Approvals compare the reviewed row revision before resolving; stale task writes fail rather than silently overwriting newer data.
+- Browser smoke checks login, edits, stale revisions, failed writes, active sessions, keyboard navigation, mobile layout, settings and logout using synthetic API responses. Modal focus management is shared.
+- Dependency security audits the committed runtime and dev dependency trees and fails on known high/critical findings. Vite was updated from 7.1.2 to the audit-recommended pinned 7.3.8 release. No new runtime dependencies.
+- The isolated database regression workflow applies existing migrations in an ephemeral PostgreSQL 16 container, using a test-only Auth fixture; it checks owner isolation, privilege denial, recovery and concurrent claiming. Never run the fixture against Supabase. These checks do not exercise real Supabase Auth or the hosted REST gateway.
+
+### Remaining deployment security gates
+
+1. Disable public sign-ups and provision the intended administrator. Import the staged projects only for that verified owner UUID.
+2. Verify real Supabase Auth, RLS and REST behavior using the actual deployment configuration. Never expose a service role or secret key to the browser.
+3. Audit direct authenticated task and approval updates: UI locks are advisory, current owner-scoped policies do not enforce all workflow transitions. Before relying on the queue for autonomous agents, enforce allowed transitions, active-session restrictions and approval invalidation in a database migration reviewed separately. Repository state and actual user authorization still control external actions.
+4. Confirm final frontend, browser, dependency and isolated database CI results on the release revision. No deployment or merge is performed by these verification workflows.
