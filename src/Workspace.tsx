@@ -97,7 +97,7 @@ export function Workspace({session}:{session:Session}){
  {tab==='Repositories'&&<RepositoryPanel projects={projects} scope={scope} data={data} snapshots={snapshots} onImport={(id,value)=>setSnapshots(old=>({...old,[id]:value}))} onClear={id=>setSnapshots(old=>{const next={...old};delete next[id];return next})}/>}
  {tab==='AI context'&&<ContextPanel projects={projects} scope={scope} data={data} snapshots={snapshots}/>}
  {tab==='Delivery'&&<ProjectOperations data={data} queue={queue} scope={scope} onOpen={openDetail}/>}
- {tab==='Approvals'&&<ApprovalsView approvals={scoped(approvals)} tasks={tasks} projectName={projectName} busy={busy||loading} onResolve={(id,status)=>void mutate(()=>resolveApproval(id,status))}/>}
+ {tab==='Approvals'&&<ApprovalsView approvals={scoped(approvals)} tasks={tasks} projectName={projectName} busy={busy||loading} onResolve={(approval,status)=>void mutate(()=>resolveApproval(approval,status))}/>}
  {tab==='Settings'&&<SettingsPanel value={preferences.value} onChange={preferences.update} error={preferences.error}/>}
  {tab==='Activity'&&<ActivityTimeline rows={scoped(activity)} projects={projects} tasks={tasks} onOpen={openDetail}/>} 
  </Suspense>
