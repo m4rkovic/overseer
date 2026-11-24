@@ -1,15 +1,15 @@
-import React,{useEffect,useState} from 'react';
+import React,{useEffect,useState,lazy,Suspense} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {db} from './lib/supabase';
 import {message} from './domain';
 import {Field} from './components/primitives';
-import {Workspace} from './Workspace';
+const Workspace=lazy(()=>import('./Workspace').then(module=>({default:module.Workspace})));
 export function App(){
  const [session,setSession]=useState<Session|null>(null),[initial,setInitial]=useState(true),[authError,setAuthError]=useState('');
- useEffect(()=>{let alive=true;db.auth.getSession().then(({data,error})=>{if(alive){setSession(data.session);setAuthError(error?.message||'');setInitial(false)}}).catch(()=>{if(alive){setAuthError('Unable to initialize authentication. Try signing in again.');setInitial(false)}});const {data}=db.auth.onAuthStateChange((_event,next)=>{if(alive){setSession(next);setInitial(false)}});return()=>{alive=false;data.subscription.unsubscribe()}},[]);
+ useEffect(()=>{let alive=true,authEventReceived=false;db.auth.getSession().then(({data,error})=>{if(alive&&!authEventReceived){setSession(data.session);setAuthError(error?.message||'');setInitial(false)}}).catch(()=>{if(alive&&!authEventReceived){setAuthError('Unable to initialize authentication. Try signing in again.');setInitial(false)}});const {data}=db.auth.onAuthStateChange((_event,next)=>{if(alive){authEventReceived=true;setSession(next);setInitial(false)}});return()=>{alive=false;data.subscription.unsubscribe()}},[]);
  if(initial)return <main className="login"><p>Initializing workspace…</p></main>;
  if(!session)return <Login error={authError}/>;
- return <Workspace key={session.user.id} session={session}/>;
+ return <Suspense fallback={<main className="login"><p>Loading workspace…</p></main>}><Workspace key={session.user.id} session={session}/></Suspense>;
 }
 function Login({error}:{error:string}){
  const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[notice,setNotice]=useState(error),[busy,setBusy]=useState(false);
