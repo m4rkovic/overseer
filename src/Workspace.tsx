@@ -5,7 +5,7 @@ import {statuses,blankTask,readable,defaultFilters,buildTaskBlockerMap,wouldCrea
 import type {Task,TaskDraft,Tab,TaskFilters} from './domain';
 import {Empty} from './components/primitives';
 import {TaskEditor} from './components/TaskEditor';
-import {saveTaskRow,moveTask,saveRecord} from './lib/workspaceApi';
+import {saveTaskRow,moveTask,saveRecord,resolveApproval} from './lib/workspaceApi';
 import {RecordForm,ProjectRegistry,DependencyOverview} from './components/Records';
 import type {RecordEditor,RecordSubmission} from './components/Records';
 import {DependencyGraph,TaskDetail,ProjectOperations,Handover} from './components/Operations';
@@ -36,7 +36,8 @@ export function Workspace({session}:{session:Session}){
  const editorLocked=!!editor&&'id' in editor&&activeTaskIds.has(editor.id);
  const blockerMap=useMemo(()=>buildTaskBlockerMap(tasks,deps,approvals,works),[tasks,deps,approvals,works]);
  const blockers=(t:Task)=>blockerMap.get(t.id)||[];
- const projectName=(id:string)=>projects.find(p=>p.id===id)?.name||'Unknown project';
+ const projectNames=useMemo(()=>new Map(projects.map(p=>[p.id,p.name])),[projects]);
+ const projectName=(id:string)=>projectNames.get(id)||'Unknown project';
  const detail=tasks.find(t=>t.id===detailId);
  function openDetail(task:Task){setDetailId(task.id);setTab('Tasks');setScope(task.project_id);setPalette(false);}
  const bulkApply=(rows:Task[],patch:BulkPatch)=>applyBulk(rows,patch,activeTaskIds);
@@ -53,7 +54,7 @@ export function Workspace({session}:{session:Session}){
   if(status==='in_progress'){setError('Start work through the execution queue / agent claim, not a manual drag.');return;}
   await mutate(()=>moveTask(task,status));
  }
- function newTask(){if(projects.length)setEditor(blankTask(scope||projects[0].id));else{setTab('Projects');setRecordEditor({kind:'project'})}}
+ function newTask(){if(projects.length)setEditor(blankTask(projects.some(p=>p.id===scope)?scope:projects[0].id));else{setTab('Projects');setRecordEditor({kind:'project'})}}
  useEffect(()=>{const handler=(e:KeyboardEvent)=>{
   if(!e.altKey||!e.shiftKey||e.ctrlKey||e.metaKey||editor||palette||busy||loading)return;
   const target=e.target;
@@ -70,7 +71,7 @@ export function Workspace({session}:{session:Session}){
  function navigate(next:Tab){setTab(next);setSearch('');setRecordEditor(null);setDetailId(null);setPalette(false);}
  function openProject(id:string){setScope(id);navigate('Tasks');}
  return <>
- <WorkspaceShell tab={tab} scope={scope} projects={projects} email={session.user.email} preferences={preferences.value} busy={busy} loading={loading} notice={notice} error={error} modalOpen={!!editor||palette} onNavigate={navigate} onScope={id=>{setScope(id);setDetailId(null);setRecordEditor(null)}} onSignOut={()=>void db.auth.signOut()} onRefresh={()=>void refresh()} onSearch={()=>setPalette(true)} onNewTask={newTask}>
+ <WorkspaceShell tab={tab} scope={scope} projects={projects} email={session.user.email} preferences={preferences.value} busy={busy} loading={loading} notice={notice} error={error} modalOpen={!!editor||palette} onNavigate={navigate} onScope={id=>{setScope(id);setDetailId(null);setRecordEditor(null)}} onSignOut={()=>{void db.auth.signOut().then(({error})=>{if(error)setError(error.message)}).catch(()=>setError('Unable to sign out. Try again.'))}} onRefresh={()=>void refresh()} onSearch={()=>setPalette(true)} onNewTask={newTask}>
  {tab==='Overview'&&<><div className="metrics">{[['Projects',projects.filter(p=>!scope||p.id===scope).length],['Open tasks',scoped(tasks).filter(t=>!['done','cancelled'].includes(t.status)).length],['Ready',scoped(queue).length],['Blocked',scoped(tasks).filter(t=>t.status==='blocked').length]].map(([label,value])=><div className="metric" key={label}><small>{label}</small><strong>{value}</strong></div>)}</div><section><div className="section-head"><h2>Execution queue</h2><button onClick={()=>setTab('Execution queue')}>View all</button></div><TaskTable rows={scoped(queue).slice(0,8)} projectName={projectName} blockers={blockers} openDetail={openDetail}/></section><section><h2>Active projects</h2>{projects.filter(p=>p.status==='active'&&(!scope||p.id===scope)).map(p=>{const rows=tasks.filter(t=>t.project_id===p.id&&t.kind!=='epic'&&t.status!=='cancelled');const done=rows.filter(t=>t.status==='done').length;return <div className="project-line" key={p.id}><button className="text-button" onClick={()=>{setScope(p.id);setTab('Tasks')}}>{p.name}</button><span className="muted">{done}/{rows.length} complete</span><progress value={done} max={Math.max(1,rows.length)}/></div>})}{!projects.length&&<Empty>Create your first project to get started.</Empty>}</section></>}
  {tab==='Projects'&&<section><div className="section-head"><h2>Project registry</h2><button className="primary" onClick={()=>setRecordEditor({kind:'project'})}>+ Project</button></div>{recordEditor?.kind==='project'&&<RecordForm key={recordEditor.record?.id||'new'} editor={recordEditor} projects={projects} scope={scope} busy={busy} onClose={()=>setRecordEditor(null)} onSave={saveWorkspaceRecord}/>}<ProjectRegistry projects={projects.filter(p=>!scope||p.id===scope)} tasks={tasks} onEdit={p=>setRecordEditor({kind:'project',record:p})} onOpen={id=>{setScope(id);setTab('Tasks')}}/></section>}
  {tab==='Tasks'&&detail&&<TaskDetail task={detail} project={projects.find(p=>p.id===detail.project_id)} tasks={tasks} deps={deps} works={works} approvals={approvals} activity={activity} onEdit={()=>setEditor(detail)} onOpen={openDetail} onClose={()=>setDetailId(null)}/>}
@@ -86,7 +87,7 @@ export function Workspace({session}:{session:Session}){
  {tab==='Repositories'&&<RepositoryPanel projects={projects} scope={scope} data={data} snapshots={snapshots} onImport={(id,value)=>setSnapshots(old=>({...old,[id]:value}))} onClear={id=>setSnapshots(old=>{const next={...old};delete next[id];return next})}/>}
  {tab==='AI context'&&<ContextPanel projects={projects} scope={scope} data={data} snapshots={snapshots}/>}
  {tab==='Delivery'&&<ProjectOperations data={data} queue={queue} scope={scope} onOpen={openDetail}/>}
- {tab==='Approvals'&&<section>{scoped(approvals).map(a=><article className="record" key={a.id}><small>{projectName(a.project_id)}</small><h3>{a.operation}</h3><p>{tasks.find(t=>t.id===a.task_id)?.title||'Task'}</p>{statusTag(a.status)}{a.status==='pending'&&<div className="actions"><button disabled={busy} onClick={()=>{if(window.confirm('Approve this operation?'))void mutate(()=>db.from('approvals').update({status:'approved'}).eq('id',a.id).eq('status','pending'))}}>Approve</button><button disabled={busy} onClick={()=>void mutate(()=>db.from('approvals').update({status:'rejected'}).eq('id',a.id).eq('status','pending'))}>Reject</button></div>}</article>)}{!scoped(approvals).length&&<Empty>No approval requests.</Empty>}</section>}
+ {tab==='Approvals'&&<section>{scoped(approvals).map(a=><article className="record" key={a.id}><small>{projectName(a.project_id)}</small><h3>{a.operation}</h3><p>{tasks.find(t=>t.id===a.task_id)?.title||'Task'}</p>{statusTag(a.status)}{a.status==='pending'&&<div className="actions"><button disabled={busy} onClick={()=>{if(window.confirm('Approve this operation?'))void mutate(()=>resolveApproval(a.id,'approved'))}}>Approve</button><button disabled={busy} onClick={()=>void mutate(()=>resolveApproval(a.id,'rejected'))}>Reject</button></div>}</article>)}{!scoped(approvals).length&&<Empty>No approval requests.</Empty>}</section>}
  {tab==='Settings'&&<SettingsPanel value={preferences.value} onChange={preferences.update} error={preferences.error}/>}
  {tab==='Activity'&&<ActivityTimeline rows={scoped(activity)} projects={projects} tasks={tasks} onOpen={openDetail}/>} 
  </WorkspaceShell>
