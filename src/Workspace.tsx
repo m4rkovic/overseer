@@ -1,4 +1,4 @@
-import React,{useEffect,useState,useMemo} from 'react';
+import React,{useEffect,useState,useMemo,lazy,Suspense} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {db} from './lib/supabase';
 import {statuses,blankTask,defaultFilters,buildTaskBlockerMap,wouldCreateParentCycle} from './domain';
@@ -8,18 +8,26 @@ import {TaskEditor} from './components/TaskEditor';
 import {saveTaskRow,moveTask,saveRecord,resolveApproval} from './lib/workspaceApi';
 import {DependencyOverview} from './components/Records';
 import type {RecordEditor,RecordSubmission} from './components/Records';
-import {DependencyGraph,TaskDetail,ProjectOperations,Handover} from './components/Operations';
+
 import type {BulkPatch} from './operations';
 import {EpicOverview,HealthDashboard,ActivityTimeline} from './components/Planning';
-import {RepositoryPanel,ContextPanel,RankedQueue} from './components/Context';
+
 import type {RepositorySnapshot} from './context';
 import {usePreferences} from './lib/preferences';
-import {SettingsPanel} from './components/Settings';
+
 import {useWorkspaceData} from './hooks/useWorkspaceData';
 import {TaskTable,TasksView} from './components/TasksView';
 import {WorkspaceShell} from './components/WorkspaceShell';
 import {CommandPalette} from './components/CommandPalette';
 import {ProjectsView,MemoryView,DecisionsView,SessionsView,ApprovalsView} from './components/RecordViews';
+const DependencyGraph=lazy(()=>import('./components/Operations').then(m=>({default:m.DependencyGraph})));
+const TaskDetail=lazy(()=>import('./components/Operations').then(m=>({default:m.TaskDetail})));
+const ProjectOperations=lazy(()=>import('./components/Operations').then(m=>({default:m.ProjectOperations})));
+const Handover=lazy(()=>import('./components/Operations').then(m=>({default:m.Handover})));
+const RepositoryPanel=lazy(()=>import('./components/Context').then(m=>({default:m.RepositoryPanel})));
+const ContextPanel=lazy(()=>import('./components/Context').then(m=>({default:m.ContextPanel})));
+const RankedQueue=lazy(()=>import('./components/Context').then(m=>({default:m.RankedQueue})));
+const SettingsPanel=lazy(()=>import('./components/Settings').then(m=>({default:m.SettingsPanel})));
 export function Workspace({session}:{session:Session}){
  const preferences=usePreferences(session.user.id);
  const [tab,setTab]=useState<Tab>('Overview');
@@ -40,6 +48,7 @@ export function Workspace({session}:{session:Session}){
  const projectNames=useMemo(()=>new Map(projects.map(p=>[p.id,p.name])),[projects]);
  const projectName=(id:string)=>projectNames.get(id)||'Unknown project';
  const detail=tasks.find(t=>t.id===detailId);
+ const queueIds=useMemo(()=>new Set(queue.map(t=>t.id)),[queue]);
  function openDetail(task:Task){setDetailId(task.id);setTab('Tasks');setScope(task.project_id);setPalette(false);}
  const bulkApply=(rows:Task[],patch:BulkPatch)=>applyBulk(rows,patch,activeTaskIds);
  async function saveTask(e:React.FormEvent){
@@ -72,13 +81,14 @@ export function Workspace({session}:{session:Session}){
  function openProject(id:string){setScope(id);navigate('Tasks');}
  return <>
  <WorkspaceShell tab={tab} scope={scope} projects={projects} email={session.user.email} preferences={preferences.value} busy={busy} loading={loading} notice={notice} error={error} modalOpen={!!editor||palette} onNavigate={navigate} onScope={id=>{setScope(id);setDetailId(null);setRecordEditor(null)}} onSignOut={()=>{void db.auth.signOut().then(({error})=>{if(error)setError(error.message)}).catch(()=>setError('Unable to sign out. Try again.'))}} onRefresh={()=>void refresh()} onSearch={()=>setPalette(true)} onNewTask={newTask}>
+ <Suspense fallback={<p className="muted" role="status">Loading view…</p>}>
  {tab==='Overview'&&<><div className="metrics">{[['Projects',projects.filter(p=>!scope||p.id===scope).length],['Open tasks',scoped(tasks).filter(t=>!['done','cancelled'].includes(t.status)).length],['Ready',scoped(queue).length],['Blocked',scoped(tasks).filter(t=>t.status==='blocked').length]].map(([label,value])=><div className="metric" key={label}><small>{label}</small><strong>{value}</strong></div>)}</div><section><div className="section-head"><h2>Execution queue</h2><button onClick={()=>setTab('Execution queue')}>View all</button></div><TaskTable rows={scoped(queue).slice(0,8)} projectName={projectName} blockers={blockers} openDetail={openDetail}/></section><section><h2>Active projects</h2>{projects.filter(p=>p.status==='active'&&(!scope||p.id===scope)).map(p=>{const rows=tasks.filter(t=>t.project_id===p.id&&t.kind!=='epic'&&t.status!=='cancelled');const done=rows.filter(t=>t.status==='done').length;return <div className="project-line" key={p.id}><button className="text-button" onClick={()=>{setScope(p.id);setTab('Tasks')}}>{p.name}</button><span className="muted">{done}/{rows.length} complete</span><progress value={done} max={Math.max(1,rows.length)}/></div>})}{!projects.length&&<Empty>Create your first project to get started.</Empty>}</section></>}
  {tab==='Projects'&&<ProjectsView projects={projects} scope={scope} busy={busy||loading} editor={recordEditor} onEdit={setRecordEditor} onSave={saveWorkspaceRecord} tasks={tasks} onOpen={openProject}/>}
  {tab==='Tasks'&&detail&&<TaskDetail task={detail} project={projects.find(p=>p.id===detail.project_id)} tasks={tasks} deps={deps} works={works} approvals={approvals} activity={activity} onEdit={()=>setEditor(detail)} onOpen={openDetail} onClose={()=>setDetailId(null)}/>}
  {tab==='Tasks'&&!detail&&<TasksView userId={session.user.id} scope={scope} projects={projects} tasks={tasks} works={works} filters={filters} setFilters={setFilters} search={search} setSearch={setSearch} mode={mode} setMode={setMode} setScope={setScope} busy={busy} loading={loading} activeTaskIds={activeTaskIds} projectName={projectName} blockers={blockers} openDetail={openDetail} bulkApply={bulkApply} changeStatus={changeStatus}/>}
  {tab==='Epics'&&<EpicOverview tasks={scoped(tasks)} onOpen={openDetail}/>}
  {tab==='Health'&&<HealthDashboard projects={projects.filter(p=>!scope||p.id===scope)} tasks={tasks} queue={queue} works={works} approvals={approvals} onOpen={id=>{setScope(id);setTab('Delivery');setDetailId(null)}}/>}
- {tab==='Execution queue'&&<section><p className="muted">Ready, dependency-complete and approved where required. No autonomous actions are triggered by this view.</p><p className="muted">{scoped(queue).length} eligible · {scoped(tasks).filter(t=>t.status==='ready'&&!queue.some(q=>q.id===t.id)).length} waiting on constraints</p><TaskTable rows={scoped(queue)} projectName={projectName} blockers={blockers} openDetail={openDetail}/><RankedQueue queue={scoped(queue)} deps={scoped(deps)} onOpen={openDetail}/></section>}
+ {tab==='Execution queue'&&<section><p className="muted">Ready, dependency-complete and approved where required. No autonomous actions are triggered by this view.</p><p className="muted">{scoped(queue).length} eligible · {scoped(tasks).filter(t=>t.status==='ready'&&!queueIds.has(t.id)).length} waiting on constraints</p><TaskTable rows={scoped(queue)} projectName={projectName} blockers={blockers} openDetail={openDetail}/><RankedQueue queue={scoped(queue)} deps={scoped(deps)} onOpen={openDetail}/></section>}
  {(tab==='Project memory'||tab==='Directives')&&<MemoryView projects={projects} scope={scope} busy={busy||loading} editor={recordEditor} onEdit={setRecordEditor} onSave={saveWorkspaceRecord} notes={scoped(notes)} directives={tab==='Directives'} projectName={projectName}/>}
  {tab==='Dependencies'&&<section><p className="muted">Task prerequisites and their current status. Select a task to manage its dependencies.</p><DependencyGraph tasks={scoped(tasks)} deps={scoped(deps)} onOpen={openDetail}/><DependencyOverview tasks={scoped(tasks)} dependencies={scoped(deps)} projectName={projectName} onOpen={openDetail}/></section>}
  {tab==='Decisions'&&<DecisionsView projects={projects} scope={scope} busy={busy||loading} editor={recordEditor} onEdit={setRecordEditor} onSave={saveWorkspaceRecord} decisions={scoped(decisions)} projectName={projectName}/>}
@@ -90,6 +100,7 @@ export function Workspace({session}:{session:Session}){
  {tab==='Approvals'&&<ApprovalsView approvals={scoped(approvals)} tasks={tasks} projectName={projectName} busy={busy||loading} onResolve={(id,status)=>void mutate(()=>resolveApproval(id,status))}/>}
  {tab==='Settings'&&<SettingsPanel value={preferences.value} onChange={preferences.update} error={preferences.error}/>}
  {tab==='Activity'&&<ActivityTimeline rows={scoped(activity)} projects={projects} tasks={tasks} onOpen={openDetail}/>} 
+ </Suspense>
  </WorkspaceShell>
  {palette&&<CommandPalette projects={projects} tasks={tasks} projectName={projectName} onNavigate={navigate} onProject={openProject} onTask={openDetail} onClose={()=>setPalette(false)}/>} 
  {editor&&<TaskEditor editor={editor} projects={projects} tasks={tasks} deps={deps} busy={busy} editorLocked={editorLocked} error={error} setEditor={setEditor} saveTask={saveTask} mutate={mutate}/>}
