@@ -1,0 +1,31 @@
+import type {ReactNode} from 'react';
+import {tabs} from '../domain';
+import type {Project,Tab} from '../domain';
+import type {Preferences} from '../preferences';
+
+type Props={tab:Tab;scope:string;projects:Project[];email?:string;preferences:Preferences;busy:boolean;loading:boolean;notice:string;error:string;modalOpen:boolean;onNavigate:(tab:Tab)=>void;onScope:(id:string)=>void;onSignOut:()=>void;onRefresh:()=>void;onSearch:()=>void;onNewTask:()=>void;children:ReactNode};
+export function WorkspaceShell({tab,scope,projects,email,preferences,busy,loading,notice,error,modalOpen,onNavigate,onScope,onSignOut,onRefresh,onSearch,onNewTask,children}:Props){
+ return <div className={'shell density-'+preferences.density} inert={modalOpen}>
+  <aside>
+   <div className="brand">OVERSEER<span>.</span><small>DEVELOPMENT OPERATIONS</small></div>
+   <div className="eyebrow nav-label">Workspace</div>
+   <nav aria-label="Workspace navigation">{tabs.map((t,i)=><button key={t} className={tab===t?'selected':''} aria-current={tab===t?'page':undefined} onClick={()=>onNavigate(t)}><span className="nav-num">{String(i+1).padStart(2,'0')}</span>{t}</button>)}</nav>
+   <div className="aside-footer"><div className="eyebrow">Signed in</div><div className="email">{email}</div><button disabled={busy} onClick={onSignOut}>Sign out</button></div>
+  </aside>
+  <main className="workspace">
+   <header>
+    <div><div className="eyebrow">WORKSPACE / {tab.toUpperCase()}</div><h1>{tab}</h1></div>
+    <div className="actions">
+     <select aria-label="Project filter" value={scope} onChange={e=>onScope(e.target.value)}><option value="">All projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>
+     <button disabled={loading||busy} onClick={onRefresh}>Refresh</button>
+     <button onClick={onSearch} title={preferences.showShortcuts?'Alt+Shift+N: new task · Alt+Shift+R: refresh · Alt+Shift+T: tasks':undefined}>Search {preferences.showShortcuts&&<kbd>Ctrl K</kbd>}</button>
+     <button className="primary" disabled={loading||busy} onClick={onNewTask}>+ Task</button>
+    </div>
+   </header>
+   {notice&&<div className="notice" role="status">{notice}</div>}
+   {error&&<div className="error" role="alert">{error}</div>}
+   {loading&&<div className="muted" role="status">Loading workspace…</div>}
+   {children}
+  </main>
+ </div>;
+}
