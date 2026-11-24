@@ -20,6 +20,8 @@ jobs:
             npm install --package-lock-only --ignore-scripts
           fi
           npm ci --ignore-scripts
+      - name: Domain regression tests
+        run: npm test
       - name: Type-check and build
         run: npm run build
       - uses: actions/upload-artifact@v4
