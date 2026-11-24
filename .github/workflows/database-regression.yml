@@ -1,0 +1,51 @@
+name: Isolated database regression
+on:
+  pull_request:
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/database-regression.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: overseer_test
+          POSTGRES_PASSWORD: disposable-ci-only
+        options: >-
+          --health-cmd "pg_isready -U postgres -d overseer_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Apply migrations to disposable database
+        env:
+          TEST_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql_ci() { docker exec -i "$TEST_POSTGRES_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d overseer_test; }
+          psql_ci < supabase/tests/isolated_auth_fixture.sql
+          for migration in supabase/migrations/*.sql; do psql_ci < "$migration"; done
+          psql_ci < supabase/tests/session_recovery.sql
+          psql_ci < supabase/tests/isolated_owner_rls.sql
+      - name: Test concurrent claims
+        env:
+          TEST_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: python3 supabase/tests/concurrent_claim.py
+      - name: Validate review-only hardening proposal
+        env:
+          TEST_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec -i "$TEST_POSTGRES_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d overseer_test < supabase/proposals/workflow_write_hardening.sql
+          docker exec -i "$TEST_POSTGRES_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d overseer_test < supabase/tests/workflow_write_hardening.sql

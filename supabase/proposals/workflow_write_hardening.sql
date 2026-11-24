@@ -1,0 +1,106 @@
+-- REVIEW CANDIDATE. Only apply in disposable CI or after explicit production approval.
+begin;
+
+-- RLS remains the ownership boundary. Column grants narrow browser writes.
+revoke insert,update on public.tasks from authenticated;
+grant insert(project_id,parent_id,kind,title,description,acceptance_criteria,next_step,branch,pr_url,test_result,status,priority,requires_approval) on public.tasks to authenticated;
+grant update(parent_id,kind,title,description,acceptance_criteria,next_step,branch,pr_url,test_result,status,priority,requires_approval) on public.tasks to authenticated;
+
+revoke insert,update on public.approvals from authenticated;
+grant update(status) on public.approvals to authenticated;
+revoke insert,update on public.projects from authenticated;
+grant insert(name,description,repository,status) on public.projects to authenticated;
+grant update(name,description,repository,status) on public.projects to authenticated;
+revoke insert,update on public.project_memory from authenticated;
+grant insert(project_id,title,content,category) on public.project_memory to authenticated;
+grant update(title,content,category) on public.project_memory to authenticated;
+revoke insert,update on public.decisions from authenticated;
+grant insert(project_id,title,rationale,outcome,status) on public.decisions to authenticated;
+grant update(title,rationale,outcome,status) on public.decisions to authenticated;
+
+create function overseer_private.guard_browser_task() returns trigger
+language plpgsql security invoker set search_path='' as $$
+begin
+ if current_user <> 'authenticated' then return new; end if;
+ if new.status='in_progress' then
+  raise exception 'Agent claims must use the trusted session protocol' using errcode='42501';
+ end if;
+ if tg_op='UPDATE' then
+  if exists(select 1 from public.work_sessions s where s.task_id=old.id and s.project_id=old.project_id and s.status='active') then
+   raise exception 'Task has an active session' using errcode='42501';
+  end if;
+ end if;
+ return new;
+end $$;
+revoke all on function overseer_private.guard_browser_task() from public,anon,authenticated;
+create trigger guard_browser_task before insert or update on public.tasks
+for each row execute function overseer_private.guard_browser_task();
+
+-- Changes in reviewed work scope invalidate the existing approval.
+-- Invoker is sufficient: both owner and trusted connector can update status.
+create function overseer_private.invalidate_task_approval() returns trigger
+language plpgsql security invoker set search_path='' as $$
+begin
+ if row(old.title,old.description,old.acceptance_criteria,old.branch,old.pr_url,old.kind,old.parent_id,old.requires_approval)
+    is distinct from row(new.title,new.description,new.acceptance_criteria,new.branch,new.pr_url,new.kind,new.parent_id,new.requires_approval) then
+  update public.approvals set status='pending'
+   where project_id=new.project_id and task_id=new.id and status<>'pending';
+ end if;
+ return null;
+end $$;
+revoke all on function overseer_private.invalidate_task_approval() from public,anon,authenticated;
+create trigger invalidate_task_approval after update on public.tasks
+for each row execute function overseer_private.invalidate_task_approval();
+
+create function overseer_private.guard_approval_resolution() returns trigger
+language plpgsql security invoker set search_path='' as $$
+begin
+ -- Resetting to pending only withdraws permission; no trigger-depth bypass.
+ if current_user='authenticated' and new.status<>'pending' and old.status<>'pending' then
+  raise exception 'Only pending approvals may be resolved' using errcode='42501';
+ end if;
+ if new.operation is distinct from old.operation or new.task_id is distinct from old.task_id or new.project_id is distinct from old.project_id then
+  new.status:='pending';
+ end if;
+ return new;
+end $$;
+revoke all on function overseer_private.guard_approval_resolution() from public,anon,authenticated;
+create trigger guard_approval_resolution before update on public.approvals
+for each row execute function overseer_private.guard_approval_resolution();
+
+-- Dependency edits affect the reviewed scope too. Lock the dependent task
+-- before checking its session so claims and dependency edits cannot silently overlap.
+create function overseer_private.guard_browser_dependency() returns trigger
+language plpgsql security invoker set search_path='' as $$
+declare pid uuid; tid uuid;
+begin
+ if tg_op='DELETE' then pid:=old.project_id;tid:=old.task_id;
+ else pid:=new.project_id;tid:=new.task_id; end if;
+ if current_user='authenticated' then
+  perform 1 from public.tasks where id=tid and project_id=pid for update;
+  if not found then raise exception 'Dependent task unavailable' using errcode='42501'; end if;
+  if exists(select 1 from public.work_sessions where task_id=tid and project_id=pid and status='active') then
+   raise exception 'Task has an active session' using errcode='42501';
+  end if;
+ end if;
+ if tg_op='DELETE' then return old;end if;
+ return new;
+end $$;
+revoke all on function overseer_private.guard_browser_dependency() from public,anon,authenticated;
+create trigger guard_browser_dependency before insert or delete on public.dependencies
+for each row execute function overseer_private.guard_browser_dependency();
+
+create function overseer_private.invalidate_dependency_approval() returns trigger
+language plpgsql security invoker set search_path='' as $$
+declare pid uuid;tid uuid;
+begin
+ if tg_op='DELETE' then pid:=old.project_id;tid:=old.task_id;
+ else pid:=new.project_id;tid:=new.task_id;end if;
+ update public.approvals set status='pending' where project_id=pid and task_id=tid and status<>'pending';
+ return null;
+end $$;
+revoke all on function overseer_private.invalidate_dependency_approval() from public,anon,authenticated;
+create trigger invalidate_dependency_approval after insert or delete on public.dependencies
+for each row execute function overseer_private.invalidate_dependency_approval();
+
+commit;
