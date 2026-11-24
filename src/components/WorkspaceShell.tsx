@@ -18,7 +18,7 @@ export function WorkspaceShell({tab,scope,projects,email,preferences,busy,loadin
     <div className="actions">
      <select aria-label="Project filter" value={scope} onChange={e=>onScope(e.target.value)}><option value="">All projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>
      <button disabled={loading||busy} onClick={onRefresh}>Refresh</button>
-     <button onClick={onSearch} title={preferences.showShortcuts?'Alt+Shift+N: new task · Alt+Shift+R: refresh · Alt+Shift+T: tasks':undefined}>Search {preferences.showShortcuts&&<kbd>Ctrl K</kbd>}</button>
+     <button data-modal-return onClick={onSearch} title={preferences.showShortcuts?'Alt+Shift+N: new task · Alt+Shift+R: refresh · Alt+Shift+T: tasks':undefined}>Search {preferences.showShortcuts&&<kbd>Ctrl K</kbd>}</button>
      <button className="primary" disabled={loading||busy} onClick={onNewTask}>+ Task</button>
     </div>
    </header>
