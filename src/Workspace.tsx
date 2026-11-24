@@ -1,7 +1,7 @@
 import React,{useEffect,useState,useMemo} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {db} from './lib/supabase';
-import {statuses,tabs,blankTask,readable,defaultFilters,buildTaskBlockerMap,wouldCreateParentCycle} from './domain';
+import {statuses,blankTask,readable,defaultFilters,buildTaskBlockerMap,wouldCreateParentCycle} from './domain';
 import type {Task,TaskDraft,Tab,TaskFilters} from './domain';
 import {Empty} from './components/primitives';
 import {TaskEditor} from './components/TaskEditor';
@@ -17,6 +17,8 @@ import {usePreferences} from './lib/preferences';
 import {SettingsPanel} from './components/Settings';
 import {useWorkspaceData} from './hooks/useWorkspaceData';
 import {TaskTable,TasksView} from './components/TasksView';
+import {WorkspaceShell} from './components/WorkspaceShell';
+import {CommandPalette} from './components/CommandPalette';
 export function Workspace({session}:{session:Session}){
  const preferences=usePreferences(session.user.id);
  const [tab,setTab]=useState<Tab>('Overview');
@@ -27,8 +29,8 @@ export function Workspace({session}:{session:Session}){
 
  const [scope,setScope]=useState(''),[search,setSearch]=useState(''),[editor,setEditor]=useState<Task|TaskDraft|null>(null),[recordEditor,setRecordEditor]=useState<RecordEditor|null>(null),[mode,setMode]=useState<'table'|'board'|'bulk'>(preferences.value.defaultMode);
  const [detailId,setDetailId]=useState<string|null>(null);
- const [palette,setPalette]=useState(false),[command,setCommand]=useState('');
- useEffect(()=>{const handler=(e:KeyboardEvent)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setPalette(v=>!v);setCommand('')}else if(e.key==='Escape'){setPalette(false)}};window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler)},[]);
+ const [palette,setPalette]=useState(false);
+ useEffect(()=>{const handler=(e:KeyboardEvent)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();if(!editor)setPalette(v=>!v)}else if(e.key==='Escape'){setPalette(false)}};window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler)},[editor]);
  const scoped=<T extends {project_id:string}>(rows:T[])=>rows.filter(r=>!scope||r.project_id===scope);
  const activeTaskIds=useMemo(()=>new Set(works.filter(w=>w.status==='active'&&w.task_id).map(w=>w.task_id)),[works]);
  const editorLocked=!!editor&&'id' in editor&&activeTaskIds.has(editor.id);
@@ -65,9 +67,10 @@ export function Workspace({session}:{session:Session}){
  async function saveWorkspaceRecord(r:RecordSubmission){return mutate(()=>saveRecord(r.table,r.id,r.updatedAt,r.payload));}
  const statusTag=(s:string)=><span className={'status '+s}>{readable(s)}</span>;
 
- return <div className={"shell density-"+preferences.value.density}><aside><div className="brand">OVERSEER<span>.</span><small>DEVELOPMENT OPERATIONS</small></div><div className="eyebrow nav-label">Workspace</div><nav>{tabs.map((t,i)=><button key={t} className={tab===t?'selected':''} onClick={()=>{setTab(t);setSearch('');setRecordEditor(null);setDetailId(null)}}><span className="nav-num">{String(i+1).padStart(2,'0')}</span>{t}</button>)}</nav><div className="aside-footer"><div className="eyebrow">Signed in</div><div className="email">{session.user.email}</div><button onClick={()=>void db.auth.signOut()}>Sign out</button></div></aside>
- <main className="workspace"><header><div><div className="eyebrow">WORKSPACE / {tab.toUpperCase()}</div><h1>{tab}</h1></div><div className="actions"><select aria-label="Project filter" value={scope} onChange={e=>{setScope(e.target.value);setDetailId(null)}}><option value="">All projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select><button disabled={loading||busy} onClick={()=>void refresh()}>Refresh</button><button onClick={()=>{setCommand('');setPalette(true)}} title="Alt+Shift+N: new task · Alt+Shift+R: refresh · Alt+Shift+T: tasks">Search {preferences.value.showShortcuts&&<kbd>Ctrl K</kbd>}</button><button className="primary" disabled={loading||busy} onClick={newTask}>+ Task</button></div></header>
- {notice&&<div className="notice" role="status">{notice}</div>}{error&&<div className="error" role="alert">{error}</div>}{loading&&<div className="muted" role="status">Loading workspace…</div>}
+ function navigate(next:Tab){setTab(next);setSearch('');setRecordEditor(null);setDetailId(null);setPalette(false);}
+ function openProject(id:string){setScope(id);navigate('Tasks');}
+ return <>
+ <WorkspaceShell tab={tab} scope={scope} projects={projects} email={session.user.email} preferences={preferences.value} busy={busy} loading={loading} notice={notice} error={error} modalOpen={!!editor||palette} onNavigate={navigate} onScope={id=>{setScope(id);setDetailId(null);setRecordEditor(null)}} onSignOut={()=>void db.auth.signOut()} onRefresh={()=>void refresh()} onSearch={()=>setPalette(true)} onNewTask={newTask}>
  {tab==='Overview'&&<><div className="metrics">{[['Projects',projects.filter(p=>!scope||p.id===scope).length],['Open tasks',scoped(tasks).filter(t=>!['done','cancelled'].includes(t.status)).length],['Ready',scoped(queue).length],['Blocked',scoped(tasks).filter(t=>t.status==='blocked').length]].map(([label,value])=><div className="metric" key={label}><small>{label}</small><strong>{value}</strong></div>)}</div><section><div className="section-head"><h2>Execution queue</h2><button onClick={()=>setTab('Execution queue')}>View all</button></div><TaskTable rows={scoped(queue).slice(0,8)} projectName={projectName} blockers={blockers} openDetail={openDetail}/></section><section><h2>Active projects</h2>{projects.filter(p=>p.status==='active'&&(!scope||p.id===scope)).map(p=>{const rows=tasks.filter(t=>t.project_id===p.id&&t.kind!=='epic'&&t.status!=='cancelled');const done=rows.filter(t=>t.status==='done').length;return <div className="project-line" key={p.id}><button className="text-button" onClick={()=>{setScope(p.id);setTab('Tasks')}}>{p.name}</button><span className="muted">{done}/{rows.length} complete</span><progress value={done} max={Math.max(1,rows.length)}/></div>})}{!projects.length&&<Empty>Create your first project to get started.</Empty>}</section></>}
  {tab==='Projects'&&<section><div className="section-head"><h2>Project registry</h2><button className="primary" onClick={()=>setRecordEditor({kind:'project'})}>+ Project</button></div>{recordEditor?.kind==='project'&&<RecordForm key={recordEditor.record?.id||'new'} editor={recordEditor} projects={projects} scope={scope} busy={busy} onClose={()=>setRecordEditor(null)} onSave={saveWorkspaceRecord}/>}<ProjectRegistry projects={projects.filter(p=>!scope||p.id===scope)} tasks={tasks} onEdit={p=>setRecordEditor({kind:'project',record:p})} onOpen={id=>{setScope(id);setTab('Tasks')}}/></section>}
  {tab==='Tasks'&&detail&&<TaskDetail task={detail} project={projects.find(p=>p.id===detail.project_id)} tasks={tasks} deps={deps} works={works} approvals={approvals} activity={activity} onEdit={()=>setEditor(detail)} onOpen={openDetail} onClose={()=>setDetailId(null)}/>}
@@ -86,8 +89,8 @@ export function Workspace({session}:{session:Session}){
  {tab==='Approvals'&&<section>{scoped(approvals).map(a=><article className="record" key={a.id}><small>{projectName(a.project_id)}</small><h3>{a.operation}</h3><p>{tasks.find(t=>t.id===a.task_id)?.title||'Task'}</p>{statusTag(a.status)}{a.status==='pending'&&<div className="actions"><button disabled={busy} onClick={()=>{if(window.confirm('Approve this operation?'))void mutate(()=>db.from('approvals').update({status:'approved'}).eq('id',a.id).eq('status','pending'))}}>Approve</button><button disabled={busy} onClick={()=>void mutate(()=>db.from('approvals').update({status:'rejected'}).eq('id',a.id).eq('status','pending'))}>Reject</button></div>}</article>)}{!scoped(approvals).length&&<Empty>No approval requests.</Empty>}</section>}
  {tab==='Settings'&&<SettingsPanel value={preferences.value} onChange={preferences.update} error={preferences.error}/>}
  {tab==='Activity'&&<ActivityTimeline rows={scoped(activity)} projects={projects} tasks={tasks} onOpen={openDetail}/>} 
- </main>
- {palette&&<div className="palette-overlay" onClick={()=>setPalette(false)}><section className="palette" role="dialog" aria-modal="true" aria-label="Command palette" onClick={e=>e.stopPropagation()}><div className="section-head"><h2>Command palette</h2><button onClick={()=>setPalette(false)}>Esc</button></div><input autoFocus placeholder="Find a page, project or task…" aria-label="Search workspace" value={command} onChange={e=>setCommand(e.target.value)}/><div className="palette-results">{tabs.filter(t=>t.toLowerCase().includes(command.toLowerCase())).map(t=><button key={t} onClick={()=>{setTab(t);setPalette(false);setSearch('');setRecordEditor(null);setDetailId(null)}}><small>Navigate</small>{t}</button>)}{projects.filter(p=>p.name.toLowerCase().includes(command.toLowerCase())).map(p=><button key={p.id} onClick={()=>{setScope(p.id);setTab('Tasks');setSearch('');setRecordEditor(null);setPalette(false);setDetailId(null)}}><small>Project</small>{p.name}</button>)}{command.trim()&&tasks.filter(t=>t.title.toLowerCase().includes(command.toLowerCase())).slice(0,20).map(t=><button key={t.id} onClick={()=>{openDetail(t)}}><small>{projectName(t.project_id)} · P{t.priority}</small>{t.title}</button>)}</div></section></div>}
+ </WorkspaceShell>
+ {palette&&<CommandPalette projects={projects} tasks={tasks} projectName={projectName} onNavigate={navigate} onProject={openProject} onTask={openDetail} onClose={()=>setPalette(false)}/>} 
  {editor&&<TaskEditor editor={editor} projects={projects} tasks={tasks} deps={deps} busy={busy} editorLocked={editorLocked} error={error} setEditor={setEditor} saveTask={saveTask} mutate={mutate}/>}
- </div>
+ </>
 }
