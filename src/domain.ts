@@ -30,16 +30,20 @@ export function filterTasks(tasks:readonly Task[],filters:TaskFilters):Task[] {
  (!filters.status||t.status===filters.status)&&(!filters.priority||String(t.priority)===filters.priority)&&(!filters.kind||t.kind===filters.kind));
  return rows.sort((a,b)=>filters.sort==='title'?a.title.localeCompare(b.title)||a.id.localeCompare(b.id):filters.sort==='newest'?(b.created_at||'').localeCompare(a.created_at||'')||a.id.localeCompare(b.id):a.priority-b.priority||(a.created_at||'').localeCompare(b.created_at||'')||a.id.localeCompare(b.id));
 }
-export function taskBlockers(task:Task,all:readonly Task[],deps:readonly Dependency[],approvals:readonly Approval[],sessions:readonly Work[]):string[] {
- const reasons:string[]=[];
- const byId=new Map(all.map(t=>[t.id,t]));
- if(task.status==='blocked')reasons.push('Task marked blocked');
- for(const d of deps.filter(d=>d.task_id===task.id&&d.project_id===task.project_id)){
- const prereq=byId.get(d.depends_on_id);if(!prereq||prereq.status!=='done')reasons.push('Waiting for: '+(prereq?.title||'Unknown prerequisite'));
+export function buildTaskBlockerMap(all:readonly Task[],deps:readonly Dependency[],approvals:readonly Approval[],sessions:readonly Work[]):Map<string,string[]> {
+ const byId=new Map(all.map(t=>[t.id,t])),result=new Map(all.map(t=>[t.id,t.status==='blocked'?['Task marked blocked']:[] as string[]]));
+ for(const d of deps){
+  const task=byId.get(d.task_id);if(!task||task.project_id!==d.project_id)continue;
+  const prerequisite=byId.get(d.depends_on_id);
+  if(!prerequisite||prerequisite.project_id!==task.project_id||prerequisite.status!=='done')result.get(task.id)!.push('Waiting for: '+(prerequisite?.project_id===task.project_id?prerequisite.title:'Unknown prerequisite'));
  }
- if(task.requires_approval&&!approvals.some(a=>a.task_id===task.id&&a.project_id===task.project_id&&a.status==='approved'))reasons.push('Approval required');
- if(sessions.some(s=>s.task_id===task.id&&s.status==='active'))reasons.push('Active session');
- return reasons;
+ const approved=new Set(approvals.filter(a=>a.status==='approved').map(a=>a.project_id+':'+a.task_id));
+ const active=new Set(sessions.filter(s=>s.status==='active').map(s=>s.task_id));
+ for(const t of all){const reasons=result.get(t.id)!;if(t.requires_approval&&!approved.has(t.project_id+':'+t.id))reasons.push('Approval required');if(active.has(t.id))reasons.push('Active session');}
+ return result;
+}
+export function taskBlockers(task:Task,all:readonly Task[],deps:readonly Dependency[],approvals:readonly Approval[],sessions:readonly Work[]):string[] {
+ return buildTaskBlockerMap([...all.filter(t=>t.id!==task.id),task],deps,approvals,sessions).get(task.id)||[];
 }
 export function wouldCreateCycle(taskId:string,prerequisiteId:string,deps:readonly Dependency[]):boolean {
  const pending=[prerequisiteId],seen=new Set<string>();
