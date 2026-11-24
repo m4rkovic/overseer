@@ -10,7 +10,7 @@ async function readRows<T>(table:string,order:string,ascending=true,secondary='i
   if(order!==secondary)query=query.order(secondary);
   const {data,error}=await query.range(offset,offset+PAGE_SIZE-1);
   if(error)throw error;
-  const rows=(data??[]) as T[];
+  const rows=(data??[]) as unknown as T[];
   out.push(...rows);
   if(rows.length<PAGE_SIZE)return out;
  }
@@ -41,4 +41,12 @@ export async function moveTask(task:Task,status:string){
  if(!task.updated_at)return {error:new Error('Refresh before moving this task.')};
  const result=await db.from('tasks').update({status}).eq('id',task.id).eq('updated_at',task.updated_at).select('id').maybeSingle();
  return {error:result.error||(!result.data?new Error('Task changed in another session. Refresh and try again.'):null)};
+}
+
+type EditableTable='projects'|'project_memory'|'decisions';
+export async function saveRecord(table:EditableTable,id:string|undefined,updatedAt:string|undefined,payload:Record<string,unknown>){
+ if(!id)return db.from(table).insert(payload);
+ if(!updatedAt)return {error:new Error('Refresh before editing this record.')};
+ const result=await db.from(table).update(payload).eq('id',id).eq('updated_at',updatedAt).select('id').maybeSingle();
+ return {error:result.error||(!result.data?new Error('Record changed in another session. Refresh and reopen it.'):null)};
 }
