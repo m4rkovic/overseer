@@ -3,11 +3,12 @@ import type {Task,TaskDraft,Project,Note,Decision,Work,Approval,Activity,Depende
 import {taskPayload} from '../domain';
 
 const PAGE_SIZE=500;
-async function readRows<T>(table:string,order:string,ascending=true,secondary='id'):Promise<T[]> {
+async function readRows<T>(table:string,order:string,ascending=true,secondary='id',tertiary?:string):Promise<T[]> {
  const out:T[]=[];
  for(let offset=0;;offset+=PAGE_SIZE){
   let query=db.from(table).select('*').order(order,{ascending});
   if(order!==secondary)query=query.order(secondary);
+  if(tertiary&&tertiary!==order&&tertiary!==secondary)query=query.order(tertiary);
   const {data,error}=await query.range(offset,offset+PAGE_SIZE-1);
   if(error)throw error;
   const rows=(data??[]) as unknown as T[];
@@ -21,7 +22,7 @@ async function recentActivity():Promise<Activity[]> {
 }
 export async function loadWorkspace(){
  const [projects,tasks,queue,notes,decisions,works,approvals,activity,deps]=await Promise.all([
-  readRows<Project>('projects','name'),readRows<Task>('tasks','priority'),readRows<Task>('execution_queue','priority'),
+  readRows<Project>('projects','name'),readRows<Task>('tasks','priority',true,'created_at','id'),readRows<Task>('execution_queue','priority',true,'created_at','id'),
   readRows<Note>('project_memory','updated_at',false),readRows<Decision>('decisions','created_at',false),
   readRows<Work>('work_sessions','started_at',false),readRows<Approval>('approvals','created_at',false),
   recentActivity(),readRows<Dependency>('dependencies','task_id',true,'depends_on_id')
