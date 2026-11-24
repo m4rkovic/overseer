@@ -40,3 +40,14 @@ test('export is project scoped and rejects unknown projects',()=>{
  const data={projects:[project('p1'),project('p2')],tasks:[task('a'),task('b',{project_id:'p2'})],notes:[],decisions:[],works:[work('s','a'),work('x','b',{project_id:'p2'})],approvals:[],activity:[],deps:[edge('a','b','p2')]};
  const out=exportProject(data,'p1');assert.deepEqual(out.tasks.map(t=>t.id),['a']);assert.deepEqual(out.sessions.map(s=>s.id),['s']);assert.equal(out.dependencies.length,0);assert.equal(out.activity_limit,100);assert.throws(()=>exportProject(data,'missing'));
 });
+
+test('dependency layers handle a wide fan-out without losing edges or nodes',()=>{
+ const rows=[task('root'),...Array.from({length:2000},(_,i)=>task('child-'+i))];
+ const deps=rows.slice(1).map(t=>edge(t.id,'root'));
+ const graph=dependencyLayers(rows,deps);
+ assert.equal(graph.nodes.length,2001);
+ assert.equal(graph.edges.length,2000);
+ assert.equal(graph.unresolved.length,0);
+ assert.equal(graph.nodes[0].level,0);
+ assert.ok(graph.nodes.slice(1).every(n=>n.level===1));
+});
