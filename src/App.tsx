@@ -6,7 +6,7 @@ import {Field} from './components/primitives';
 import {Workspace} from './Workspace';
 export function App(){
  const [session,setSession]=useState<Session|null>(null),[initial,setInitial]=useState(true),[authError,setAuthError]=useState('');
- useEffect(()=>{let alive=true;db.auth.getSession().then(({data,error})=>{if(alive){setSession(data.session);setAuthError(error?.message||'');setInitial(false)}});const {data}=db.auth.onAuthStateChange((_event,next)=>{if(alive){setSession(next);setInitial(false)}});return()=>{alive=false;data.subscription.unsubscribe()}},[]);
+ useEffect(()=>{let alive=true;db.auth.getSession().then(({data,error})=>{if(alive){setSession(data.session);setAuthError(error?.message||'');setInitial(false)}}).catch(()=>{if(alive){setAuthError('Unable to initialize authentication. Try signing in again.');setInitial(false)}});const {data}=db.auth.onAuthStateChange((_event,next)=>{if(alive){setSession(next);setInitial(false)}});return()=>{alive=false;data.subscription.unsubscribe()}},[]);
  if(initial)return <main className="login"><p>Initializing workspace…</p></main>;
  if(!session)return <Login error={authError}/>;
  return <Workspace key={session.user.id} session={session}/>;
