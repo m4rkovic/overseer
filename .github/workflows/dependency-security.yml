@@ -35,7 +35,7 @@ jobs:
               if (r.error || !r.metadata?.vulnerabilities) throw Error("Audit unavailable: "+file);
               console.log(file,JSON.stringify(r.metadata.vulnerabilities));
               for(const [name,v] of Object.entries(r.vulnerabilities||{})) console.log(name,v.severity,v.range,JSON.stringify(v.fixAvailable));
-              if (file==="audit-runtime.json" && (r.metadata.vulnerabilities.high || r.metadata.vulnerabilities.critical)) process.exitCode=1;
+              if (r.metadata.vulnerabilities.high || r.metadata.vulnerabilities.critical) process.exitCode=1;
             }
           '
           exit $?
