@@ -12,9 +12,24 @@ export type Tab=typeof tabs[number];
 export const blankTask=(project_id:string):Omit<Task,'id'>=>({project_id,parent_id:null,kind:'task',title:'',description:'',acceptance_criteria:'',next_step:'',branch:'',pr_url:'',test_result:'',status:'backlog',priority:2,requires_approval:false});
 export const message=(e:unknown)=>e instanceof Error?e.message:typeof e==='object'&&e!==null&&'message' in e?String(e.message):String(e);
 export const readable=(s:string)=>s.replaceAll('_',' ');
-export function githubRepo(value:string){return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)?'https://github.com/'+value:null}
-export function githubPR(value:string){try{const u=new URL(value);return u.protocol==='https:'&&u.hostname==='github.com'&&/^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+\/?$/.test(u.pathname)?u.href:null}catch{return null}}
-
+export function githubRepo(value:string){
+ const parts=value.split('/');
+ return parts.length===2&&/^[A-Za-z0-9_-]+$/.test(parts[0])&&/^[A-Za-z0-9_.-]+$/.test(parts[1])&&!['.','..'].includes(parts[1])?'https://github.com/'+value:null;
+}
+export function githubPR(value:string){
+ try{
+  const u=new URL(value);
+  if(u.protocol!=='https:'||u.hostname!=='github.com'||u.port||u.username||u.password)return null;
+  const m=/^\/([^/]+)\/([^/]+)\/pull\/([1-9]\d*)\/?$/.exec(u.pathname);
+  if(!m||!githubRepo(m[1]+'/'+m[2])||!Number.isSafeInteger(Number(m[3])))return null;
+  return 'https://github.com/'+m[1]+'/'+m[2]+'/pull/'+m[3];
+ }catch{return null}
+}
+export function githubBranch(repository:string,branch:string){
+ const repo=githubRepo(repository);
+ if(!repo||!branch||branch.split('/').some(p=>!p||p==='.'||p==='..')||/[\u0000-\u001f\u007f]/.test(branch))return null;
+ return repo+'/tree/'+encodeURIComponent(branch);
+}
 
 export type TaskDraft=Omit<Task,'id'|'created_at'|'updated_at'>;
 export const taskFields=['project_id','parent_id','kind','title','description','acceptance_criteria','next_step','branch','pr_url','test_result','status','priority','requires_approval'] as const;
