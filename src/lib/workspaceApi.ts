@@ -1,6 +1,6 @@
 import {db} from './supabase';
-import type {Task,TaskDraft,Project,Note,Decision,Work,Approval,Activity,Dependency} from '../domain';
-import {taskPayload,isManualTaskStatus,taskChanges} from '../domain';
+import type {Task,TaskDraft,Project,Note,Decision,Work,Approval,Activity,Dependency,EditableTable} from '../domain';
+import {taskPayload,isManualTaskStatus,taskChanges,validateRecordPayload,singleMutationError} from '../domain';
 
 import {readWithRetry,readPages} from './readPolicy';
 
@@ -44,18 +44,18 @@ export async function saveTaskRow(task:Task|TaskDraft,original:Task|TaskDraft){
  const changes=taskChanges(original,task);
  if(!Object.keys(changes).length)return {error:new Error('No task changes to save.')};
  const result=await db.from('tasks').update(changes).eq('id',task.id).eq('updated_at',task.updated_at).select('id');
- return {error:result.error||(result.data?.length!==1?new Error('Task changed in another session. Refresh and reopen the task.'):null)};
+ return {error:singleMutationError(result,'Task changed in another session. Refresh and reopen the task.')};
 }
 export async function moveTask(task:Task,status:string){
  return updateTaskFields(task,{status});
 }
 
-type EditableTable='projects'|'project_memory'|'decisions';
 export async function saveRecord(table:EditableTable,id:string|undefined,updatedAt:string|undefined,payload:Record<string,unknown>){
- if(!id)return db.from(table).insert(payload);
+ const validated=validateRecordPayload(table,payload,!id);
+ if(!id)return db.from(table).insert(validated);
  if(!updatedAt)return {error:new Error('Refresh before editing this record.')};
- const result=await db.from(table).update(payload).eq('id',id).eq('updated_at',updatedAt).select('id');
- return {error:result.error||(result.data?.length!==1?new Error('Record changed in another session. Refresh and reopen it.'):null)};
+ const result=await db.from(table).update(validated).eq('id',id).eq('updated_at',updatedAt).select('id');
+ return {error:singleMutationError(result,'Record changed in another session. Refresh and reopen it.')};
 }
 
 export async function updateTaskFields(task:Task,patch:{status?:string;priority?:number}){
@@ -65,18 +65,18 @@ export async function updateTaskFields(task:Task,patch:{status?:string;priority?
  const payload={...(patch.status!==undefined?{status:patch.status}:{}),...(patch.priority!==undefined?{priority:patch.priority}:{})};
  if(!Object.keys(payload).length)return {error:new Error('No changes requested')};
  const result=await db.from('tasks').update(payload).eq('id',task.id).eq('updated_at',task.updated_at).select('id');
- return {error:result.error||(result.data?.length!==1?new Error('Task changed in another session. Refresh and try again.'):null)};
+ return {error:singleMutationError(result,'Task changed in another session. Refresh and try again.')};
 }
 
 export async function resolveApproval(approval:Approval,status:'approved'|'rejected'){
  if(!approval.updated_at)return {error:new Error('Refresh before resolving this approval.')};
  const result=await db.from('approvals').update({status}).eq('id',approval.id).eq('updated_at',approval.updated_at).eq('status','pending').select('id');
- return {error:result.error||(result.data?.length!==1?new Error('Approval is no longer pending. Refresh the workspace.'):null)};
+ return {error:singleMutationError(result,'Approval is no longer pending. Refresh the workspace.')};
 }
 export async function addDependency(dependency:Dependency){
  return db.from('dependencies').insert(dependency);
 }
 export async function removeDependency(dependency:Dependency){
  const result=await db.from('dependencies').delete().eq('project_id',dependency.project_id).eq('task_id',dependency.task_id).eq('depends_on_id',dependency.depends_on_id).select('task_id');
- return {error:result.error||(result.data?.length!==1?new Error('Dependency is no longer present. Refresh the workspace.'):null)};
+ return {error:singleMutationError(result,'Dependency is no longer present. Refresh the workspace.')};
 }
