@@ -9,11 +9,11 @@ export function parseSnapshot(raw:string,expectedRepository:string):RepositorySn
  if(raw.length>500000)throw new Error('Snapshot exceeds size limit');
  const v:unknown=JSON.parse(raw);
  if(!isRecord(v)||v.format!=='overseer-github-v1'||typeof v.repository!=='string'||!repoPattern.test(v.repository)||v.repository.toLowerCase()!==expectedRepository.toLowerCase()||!validDate(v.captured_at)||!validText(v.default_branch,250)||!v.default_branch||!Array.isArray(v.commits)||!Array.isArray(v.pull_requests)||v.commits.length>50||v.pull_requests.length>50)throw new Error('Invalid snapshot or repository mismatch');
- const commits=v.commits.map(c=>{
+ const commits=v.commits.map((c):RepositorySnapshot['commits'][number]=>{
   if(!isRecord(c)||typeof c.sha!=='string'||!/^[a-f0-9]{40}$/i.test(c.sha)||!validText(c.subject,1000)||!validDate(c.date))throw new Error('Invalid commit record');
   return {sha:c.sha,subject:c.subject,date:c.date};
  });
- const pull_requests=v.pull_requests.map(p=>{
+ const pull_requests=v.pull_requests.map((p):RepositorySnapshot['pull_requests'][number]=>{
   if(!isRecord(p)||typeof p.number!=='number'||!Number.isSafeInteger(p.number)||p.number<=0||!validText(p.title,1000)||!(p.state==='OPEN'||p.state==='CLOSED'||p.state==='MERGED')||!validText(p.head,250)||!validText(p.base,250)||!validDate(p.updated_at))throw new Error('Invalid pull request record');
   return {number:p.number,title:p.title,state:p.state,head:p.head,base:p.base,updated_at:p.updated_at};
  });
