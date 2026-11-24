@@ -1,7 +1,7 @@
 import React,{useEffect,useState,useMemo,lazy,Suspense} from 'react';
 import type {Session} from '@supabase/supabase-js';
 import {db} from './lib/supabase';
-import {statuses,blankTask,defaultFilters,buildTaskBlockerMap,wouldCreateParentCycle} from './domain';
+import {statuses,blankTask,defaultFilters,buildTaskBlockerMap,validateTaskDraft} from './domain';
 import type {Task,TaskDraft,Tab,TaskFilters} from './domain';
 import {Empty} from './components/primitives';
 import {TaskEditor} from './components/TaskEditor';
@@ -53,9 +53,8 @@ export function Workspace({session}:{session:Session}){
  const bulkApply=(rows:Task[],patch:BulkPatch)=>applyBulk(rows,patch,activeTaskIds);
  async function saveTask(e:React.FormEvent,original:Task|TaskDraft){
   e.preventDefault();if(!editor||editorLocked||loading||busy)return;
-  if(!editor.title.trim())return;
-  if(editor.status==='in_progress'&&(!('id' in editor)||tasks.find(t=>t.id===editor.id)?.status!=='in_progress')){setError('Start work through the agent claim, not manual status editing.');return;}
-  if('id' in editor&&editor.parent_id&&wouldCreateParentCycle(editor.id,editor.parent_id,tasks)){setError('Parent relationship would create a cycle.');return;}
+  const invalid=validateTaskDraft(editor,projects,tasks);
+  if(invalid){setError(invalid);return;}
   if(await mutate(()=>saveTaskRow(editor,original)))setEditor(null);
  }
  async function changeStatus(id:string,status:string){
