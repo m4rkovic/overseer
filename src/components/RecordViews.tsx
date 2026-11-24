@@ -44,10 +44,10 @@ export function SessionsView({works,projectName}:{works:Work[];projectName:NameL
  </article>)}{!works.length&&<Empty>No work sessions recorded.</Empty>}</section>;
 }
 
-export function ApprovalsView({approvals,tasks,projectName,busy,onResolve}:{approvals:Approval[];tasks:Task[];projectName:NameLookup;busy:boolean;onResolve:(id:string,status:'approved'|'rejected')=>void}){
+export function ApprovalsView({approvals,tasks,projectName,busy,onResolve}:{approvals:Approval[];tasks:Task[];projectName:NameLookup;busy:boolean;onResolve:(approval:Approval,status:'approved'|'rejected')=>void}){
  const names=new Map(tasks.map(t=>[t.id,t.title]));
  return <section>{approvals.map(a=><article className="record" key={a.id}>
   <small>{projectName(a.project_id)}</small><h3>{a.operation}</h3><p>{names.get(a.task_id)||'Task'}</p><Status value={a.status}/>
-  {a.status==='pending'&&<div className="actions"><button disabled={busy} onClick={()=>{if(window.confirm('Approve this operation?'))onResolve(a.id,'approved')}}>Approve</button><button disabled={busy} onClick={()=>onResolve(a.id,'rejected')}>Reject</button></div>}
+  {a.status==='pending'&&<div className="actions"><button disabled={busy} onClick={()=>{if(window.confirm('Approve this operation?'))onResolve(a,'approved')}}>Approve</button><button disabled={busy} onClick={()=>onResolve(a,'rejected')}>Reject</button></div>}
  </article>)}{!approvals.length&&<Empty>No approval requests.</Empty>}</section>;
 }
