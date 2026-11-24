@@ -82,3 +82,31 @@ export function groupTasksByStatus(tasks:readonly Task[]):Map<string,Task[]> {
  }
  return groups;
 }
+
+/** Compare normalized editable values; revision and ownership are never write fields. */
+export function taskDraftEqual(a:Task|TaskDraft,b:Task|TaskDraft):boolean {
+ const left=taskPayload(a),right=taskPayload(b);
+ return taskFields.every(key=>left[key]===right[key]);
+}
+export function taskChanges(original:Task|TaskDraft,draft:Task|TaskDraft):Partial<Omit<TaskDraft,'project_id'>> {
+ const before=taskPayload(original),after=taskPayload(draft);
+ return Object.fromEntries(taskFields.filter(key=>key!=='project_id'&&before[key]!==after[key]).map(key=>[key,after[key]]));
+}
+/** A prerequisite cannot be the task itself, an existing prerequisite, or a task that transitively depends on it. */
+export function dependencyCandidates(task:Task,tasks:readonly Task[],deps:readonly Dependency[]):Task[] {
+ const reverse=new Map<string,string[]>(),excluded=new Set([task.id]);
+ for(const dep of deps){
+  if(dep.project_id!==task.project_id)continue;
+  const dependents=reverse.get(dep.depends_on_id)||[];
+  dependents.push(dep.task_id);
+  reverse.set(dep.depends_on_id,dependents);
+  if(dep.task_id===task.id)excluded.add(dep.depends_on_id);
+ }
+ const visited=new Set<string>(),pending=[task.id];
+ for(let i=0;i<pending.length;i++){
+  const id=pending[i];if(visited.has(id))continue;
+  visited.add(id);excluded.add(id);
+  for(const next of reverse.get(id)||[])if(!visited.has(next))pending.push(next);
+ }
+ return tasks.filter(t=>t.project_id===task.project_id&&!excluded.has(t.id));
+}
