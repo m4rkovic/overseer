@@ -1,0 +1,38 @@
+name: Pin Vite security patch (one-time)
+on:
+  push:
+    branches: [feature/workspace-polish]
+    paths: ['.github/workflows/pin-vite-patch.yml']
+permissions:
+  contents: read
+jobs:
+  update:
+    if: github.repository == 'm4rkovic/overseer' && github.ref == 'refs/heads/feature/workspace-polish'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Resolve exact security update without executing dependency scripts
+        shell: bash
+        run: |
+          cp package.json /tmp/overseer-before-package.json
+          npm install --package-lock-only --ignore-scripts --save-exact --save-dev vite@7.3.8
+          node --input-type=module -e 'import fs from "node:fs";import assert from "node:assert/strict";const before=JSON.parse(fs.readFileSync("/tmp/overseer-before-package.json"));before.devDependencies.vite="7.3.8";assert.deepEqual(JSON.parse(fs.readFileSync("package.json")),before);const l=JSON.parse(fs.readFileSync("package-lock.json"));assert.equal(l.packages["node_modules/vite"].version,"7.3.8");assert.deepEqual(l.packages[""].dependencies,before.dependencies);assert.deepEqual(l.packages[""].devDependencies,before.devDependencies);'
+          npm audit --audit-level=high
+      - name: Commit only package manifest and lockfile to development branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- package.json package-lock.json
+          git commit -m 'Pin Vite 7.3.8 security patch and resolved lockfile'
+          git -c "http.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push origin HEAD:refs/heads/feature/workspace-polish
